@@ -4,6 +4,58 @@
  */
 import { ROLE_RANK, UserError, newId, oneOf, requireText, upsert } from './shared.js'
 
+export const PLATFORM_LABEL = { lark: '飞书', telegram: 'Telegram', wecom: '企业微信', dingtalk: '钉钉' }
+const PLATFORM_RE = /^[a-z][\w-]{0,31}$/
+
+/** Validate and dedupe an identities array: [{ platform, id, email? }]. */
+export function normalizeIdentities(list) {
+  if (!Array.isArray(list)) throw new UserError('nl2sql/invalid', 'identities 必须是数组')
+  const out = []
+  for (const raw of list.slice(0, 20)) {
+    if (!raw || typeof raw !== 'object') continue
+    const platform = String(raw.platform ?? '').trim().toLowerCase()
+    const id = String(raw.id ?? '').trim().slice(0, 200)
+    const email = String(raw.email ?? '').trim().slice(0, 200)
+    if (!id && !email) continue
+    if (!PLATFORM_RE.test(platform)) throw new UserError('nl2sql/invalid', `无效的平台：${raw.platform ?? ''}`)
+    if (!id) throw new UserError('nl2sql/invalid', `请填写 ${PLATFORM_LABEL[platform] ?? platform} 账号 ID`)
+    if (out.some(i => i.platform === platform && i.id === id)) continue
+    out.push({ platform, id, ...(email ? { email } : {}) })
+  }
+  return out
+}
+
+/** Keep the legacy larkOpenId / larkChatId fields mirroring the first Lark identity. */
+function mirrorLegacyIds(u) {
+  const lark = u.identities.find(i => i.platform === 'lark')?.id
+  delete u.larkOpenId
+  delete u.larkChatId
+  if (lark) { if (u.kind === 'chat') u.larkChatId = lark; else u.larkOpenId = lark }
+  return u
+}
+
+/** Legacy member fields → identities, in place (idempotent). */
+export function normalizeUserRecord(u) {
+  if (!u || typeof u !== 'object') return u
+  if (!Array.isArray(u.identities)) {
+    u.identities = []
+    const legacy = u.kind === 'chat' ? (u.larkChatId ?? u.larkOpenId) : (u.larkOpenId ?? u.larkChatId)
+    if (legacy) u.identities.push({ platform: 'lark', id: String(legacy) })
+  }
+  return mirrorLegacyIds(u)
+}
+
+/** Another member already owning one of u's identities (same platform + id) or its email. */
+export function findIdentityClash(users, u) {
+  const mail = u.email?.toLowerCase()
+  return users.find(x => {
+    if (x.id === u.id) return false
+    const ids = normalizeUserRecord({ ...x, identities: x.identities ? [...x.identities] : undefined }).identities
+    if (u.identities.some(a => ids.some(b => a.platform === b.platform && a.id === b.id))) return true
+    return Boolean(mail && x.email && x.email.toLowerCase() === mail)
+  })
+}
+
 export const methods = {
   // ------------------------------------------------------------ access
 
@@ -45,26 +97,38 @@ export const methods = {
   },
 
   /**
-   * Members: people (Lark open_id / email) and Lark chats, each with a role
-   * (admin | analyst | viewer) and a data source scope. The local owner is
-   * implicit. Lark messages from unknown people fall back to
-   * settings.larkDefaultRole (none = refuse).
+   * Members: people and group chats on IM platforms, each with a role
+   * (admin | analyst | viewer), a data source scope and platform-scoped
+   * identities [{ platform, id, email? }] (see docs/CHANNELS.md). The local
+   * owner is implicit. Bot messages from unknown people fall back to
+   * settings.botDefaultRole (none = refuse).
    */
   listUsers() {
-    return (this.state.users ?? []).map(u => ({ ...u, datasourceNames: (u.datasourceIds ?? []).map(id => this.findDatasource(id)?.name ?? id) }))
+    return (this.state.users ?? []).map(u => ({ ...normalizeUserRecord(u), datasourceNames: (u.datasourceIds ?? []).map(id => this.findDatasource(id)?.name ?? id) }))
   },
 
   async saveUser(input) {
     const existing = input.id ? (this.state.users ?? []).find(u => u.id === input.id) : undefined
-    const u = existing ? { ...existing } : { id: newId('u'), createdAt: Date.now() }
+    const u = existing ? normalizeUserRecord({ ...existing, identities: structuredClone(existing.identities ?? []) }) : { id: newId('u'), createdAt: Date.now(), identities: [] }
     u.kind = oneOf(input.kind ?? u.kind ?? 'person', ['person', 'chat'], 'kind')
     u.name = requireText(input.name ?? u.name, 'name', 60)
     u.role = oneOf(input.role ?? u.role ?? 'analyst', ['admin', 'analyst', 'viewer'], 'role')
-    u.larkOpenId = String(input.larkOpenId ?? u.larkOpenId ?? '').trim().slice(0, 100) || undefined
     u.email = String(input.email ?? u.email ?? '').trim().slice(0, 200) || undefined
-    u.larkChatId = String(input.larkChatId ?? u.larkChatId ?? '').trim().slice(0, 100) || undefined
-    if (u.kind === 'person' && !u.larkOpenId && !u.email) throw new UserError('nl2sql/invalid', '成员需要填写飞书 open_id 或邮箱，用于识别身份')
-    if (u.kind === 'chat' && !u.larkChatId) throw new UserError('nl2sql/invalid', '群成员需要填写飞书 chat_id')
+    if (input.identities !== undefined) {
+      u.identities = normalizeIdentities(input.identities)
+    } else {
+      // Legacy single Lark ids: replace the Lark identity (an empty value removes it).
+      const legacy = u.kind === 'chat' ? input.larkChatId : input.larkOpenId
+      const other = u.kind === 'chat' ? input.larkOpenId : input.larkChatId
+      if (legacy !== undefined || other !== undefined) {
+        const value = String(legacy ?? '').trim().slice(0, 100)
+        u.identities = u.identities.filter(i => i.platform !== 'lark')
+        if (value) u.identities.unshift({ platform: 'lark', id: value })
+      }
+    }
+    mirrorLegacyIds(u)
+    if (u.kind === 'person' && !u.identities.length && !u.email) throw new UserError('nl2sql/invalid', '成员需要填写至少一个 IM 账号（如飞书 open_id、Telegram 用户 ID）或邮箱，用于识别身份')
+    if (u.kind === 'chat' && !u.identities.length) throw new UserError('nl2sql/invalid', '群成员需要填写群 ID（如飞书 chat_id、Telegram chat id）')
     const allDs = input.allDatasources ?? (input.datasourceIds === undefined ? u.datasourceIds === null : false)
     u.datasourceIds = allDs ? null : (input.datasourceIds ?? u.datasourceIds ?? []).filter(id => this.findDatasource(id))
     u.defaultDatasourceId = input.defaultDatasourceId && this.findDatasource(input.defaultDatasourceId) ? input.defaultDatasourceId : (u.datasourceIds?.[0] ?? null)
@@ -78,7 +142,7 @@ export const methods = {
       })).filter(r => r.values.length).slice(0, 20)
       if (u.rowRules.some(r => !/^[A-Za-z_\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*$/.test(r.column))) throw new UserError('nl2sql/invalid', '行级规则的字段名只能包含字母、数字、下划线或中文')
     }
-    const dup = (this.state.users ?? []).find(x => x.id !== u.id && ((u.larkOpenId && x.larkOpenId === u.larkOpenId) || (u.email && x.email === u.email) || (u.larkChatId && x.larkChatId === u.larkChatId)))
+    const dup = findIdentityClash(this.state.users ?? [], u)
     if (dup) throw new UserError('nl2sql/duplicate', `该身份已属于成员「${dup.name}」`)
     u.updatedAt = Date.now()
     this.state.users = upsert(this.state.users ?? [], u)
@@ -95,32 +159,62 @@ export const methods = {
     return { deleted: id }
   },
 
+  /** Migrate legacy member fields to identities (idempotent). Returns true when something changed. */
+  migrateUsers() {
+    let changed = false
+    for (const u of this.state.users ?? []) {
+      const before = JSON.stringify(u)
+      normalizeUserRecord(u)
+      if (JSON.stringify(u) !== before) changed = true
+    }
+    return changed
+  },
+
+  /** Default role / data sources for unknown bot users (new keys, falling back to the legacy lark* keys). */
+  botDefaults() {
+    const s = this.state.settings
+    return {
+      role: s.botDefaultRole ?? s.larkDefaultRole ?? 'none',
+      datasourceIds: s.botDefaultDatasourceIds !== undefined ? s.botDefaultDatasourceIds : s.larkDefaultDatasourceIds,
+    }
+  },
+
   /**
-   * Resolve the effective actor for a Lark message: the person's own scope,
-   * narrowed by the chat's scope in group chats. Returns { actor } or { refused }.
+   * Resolve the effective actor for a bot message or action: the person's own
+   * scope, narrowed by the chat's scope in group chats. People match by
+   * (platform, userId) or email; chats by (platform, chatId).
+   * Returns { actor } or { refused }.
    */
-  resolveLarkActor({ openId, email, name, chatId, chatType }) {
-    const users = (this.state.users ?? []).filter(u => !u.disabled)
-    const person = users.find(u => u.kind === 'person' && ((openId && u.larkOpenId === openId) || (email && u.email && u.email.toLowerCase() === String(email).toLowerCase())))
-    const chat = chatType === 'group' ? users.find(u => u.kind === 'chat' && u.larkChatId === chatId) : undefined
-    const fallbackRole = this.state.settings.larkDefaultRole ?? 'none'
-    if (!person && !chat && fallbackRole === 'none') return { refused: '你还没有开通数据问答权限，请联系管理员在「数据问答 → 成员」中添加你的飞书账号。' }
+  resolveActor({ platform = 'lark', userId, email, name, chatId, chatType }) {
+    const users = (this.state.users ?? []).filter(u => !u.disabled).map(u => normalizeUserRecord(u))
+    const mail = email ? String(email).toLowerCase() : ''
+    const person = users.find(u => u.kind === 'person' && userId && u.identities.some(i => i.platform === platform && i.id === String(userId)))
+      ?? (mail ? users.find(u => u.kind === 'person' && ((u.email && u.email.toLowerCase() === mail) || u.identities.some(i => i.email && i.email.toLowerCase() === mail))) : undefined)
+    const chat = chatType === 'group' && chatId ? users.find(u => u.kind === 'chat' && u.identities.some(i => i.platform === platform && i.id === String(chatId))) : undefined
+    const defaults = this.botDefaults()
+    const fallbackRole = defaults.role
+    if (!person && !chat && fallbackRole === 'none') return { refused: `你还没有开通数据问答权限，请联系管理员在「数据问答 → 成员」中添加你的${PLATFORM_LABEL[platform] ?? platform}账号。` }
     const scopes = [person?.datasourceIds, chat?.datasourceIds].filter(x => x !== undefined)
     let datasourceIds = null
     for (const sc of scopes) if (Array.isArray(sc)) datasourceIds = datasourceIds === null ? [...sc] : datasourceIds.filter(id => sc.includes(id))
-    if (!person && !chat) datasourceIds = this.state.settings.larkDefaultDatasourceIds ?? []
+    if (!person && !chat) datasourceIds = defaults.datasourceIds ?? []
     const role = person?.role ?? chat?.role ?? fallbackRole
     if (Array.isArray(datasourceIds) && datasourceIds.length === 0) return { refused: '你在当前群里没有可访问的数据源。' }
     return {
       actor: {
-        kind: 'lark', id: person?.id ?? `lark:${openId}`, name: person?.name ?? name ?? openId,
+        kind: platform, platform, id: person?.id ?? `${platform}:${userId}`, name: person?.name ?? name ?? userId,
         // Group chats: the narrower of the person's and the group's role.
         role: [person?.role, chat?.role, (!person && !chat) ? fallbackRole : undefined].filter(Boolean).sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b])[0] ?? role,
-        openId, chatId, chatName: chat?.name, datasourceIds,
+        userId, ...(platform === 'lark' ? { openId: userId } : {}), chatId, chatName: chat?.name, datasourceIds,
         rowRules: [...(person?.rowRules ?? []), ...(chat?.rowRules ?? [])],
         defaultDatasourceId: chat?.defaultDatasourceId ?? person?.defaultDatasourceId ?? (datasourceIds?.[0] ?? null),
       },
     }
+  },
+
+  /** Back-compat alias of resolveActor for Lark. */
+  resolveLarkActor({ openId, email, name, chatId, chatType }) {
+    return this.resolveActor({ platform: 'lark', userId: openId, email, name, chatId, chatType })
   },
 
   auditAdmin(action, detail, actor) {

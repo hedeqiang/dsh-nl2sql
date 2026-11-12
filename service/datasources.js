@@ -13,21 +13,41 @@ export const methods = {
 
   /** Current settings plus `defaults` (for "restore defaults" in the page). */
   getSettings() {
-    return { ...structuredClone(this.state.settings), defaults: structuredClone(DEFAULT_SETTINGS) }
+    return { ...this.publicSettings(), defaults: { ...structuredClone(DEFAULT_SETTINGS), larkDefaultRole: DEFAULT_SETTINGS.botDefaultRole } }
+  },
+
+  /** Settings with the bot defaults under both names (botDefault* and the legacy larkDefault* aliases). */
+  publicSettings() {
+    const s = structuredClone(this.state.settings)
+    s.botDefaultRole = s.botDefaultRole ?? s.larkDefaultRole ?? 'none'
+    s.larkDefaultRole = s.botDefaultRole
+    const ids = s.botDefaultDatasourceIds !== undefined ? s.botDefaultDatasourceIds : s.larkDefaultDatasourceIds
+    if (ids !== undefined) { s.botDefaultDatasourceIds = ids; s.larkDefaultDatasourceIds = ids } else { delete s.botDefaultDatasourceIds; delete s.larkDefaultDatasourceIds }
+    return s
+  },
+
+  /** Move larkDefaultRole / larkDefaultDatasourceIds to the bot* keys (idempotent). */
+  migrateSettings() {
+    const s = this.state.settings
+    let changed = false
+    if (s.larkDefaultRole !== undefined) { if (s.botDefaultRole === undefined || s.botDefaultRole === DEFAULT_SETTINGS.botDefaultRole) s.botDefaultRole = s.larkDefaultRole; delete s.larkDefaultRole; changed = true }
+    if (s.larkDefaultDatasourceIds !== undefined) { if (s.botDefaultDatasourceIds === undefined) s.botDefaultDatasourceIds = s.larkDefaultDatasourceIds; delete s.larkDefaultDatasourceIds; changed = true }
+    return changed
   },
 
   /** Reset the given setting keys (or all) to their defaults. */
   async resetSettings({ keys } = {}) {
-    const list = Array.isArray(keys) && keys.length ? keys : Object.keys(DEFAULT_SETTINGS)
+    const list = (Array.isArray(keys) && keys.length ? keys : Object.keys(DEFAULT_SETTINGS)).map(k => (k === 'larkDefaultRole' ? 'botDefaultRole' : k))
     const unknown = list.filter(k => !Object.hasOwn(DEFAULT_SETTINGS, k))
     if (unknown.length) throw new UserError('nl2sql/invalid', `未知的设置项：${unknown.join(', ')}`)
     const s = { ...this.state.settings }
     for (const k of list) s[k] = structuredClone(DEFAULT_SETTINGS[k])
     if (!Array.isArray(keys) || !keys.length) {
       // Full reset also clears the optional settings that have no default value.
-      for (const k of ['larkDefaultDatasourceIds', 'schemaNotifyChannel', 'schemaCheckDaily']) delete s[k]
+      for (const k of ['botDefaultDatasourceIds', 'larkDefaultDatasourceIds', 'schemaNotifyChannel', 'schemaCheckDaily']) delete s[k]
     }
     this.state.settings = s
+    delete s.larkDefaultRole
     this.records.trim()
     this.auditAdmin('settings.reset', list.join(', '))
     await this.save()
@@ -45,8 +65,11 @@ export const methods = {
     if (input.scanGuardRows !== undefined) s.scanGuardRows = clampInt(input.scanGuardRows, 0, 1e12, 'scanGuardRows')
     if (input.cacheTtlSec !== undefined) s.cacheTtlSec = clampInt(input.cacheTtlSec, 0, 86400, 'cacheTtlSec')
     if (input.schemaWatch !== undefined) s.schemaWatch = Boolean(input.schemaWatch)
-    if (input.larkDefaultRole !== undefined) s.larkDefaultRole = oneOf(input.larkDefaultRole, ['none', 'viewer', 'analyst'], 'larkDefaultRole')
-    if (input.larkDefaultDatasourceIds !== undefined) s.larkDefaultDatasourceIds = input.larkDefaultDatasourceIds === null ? null : (input.larkDefaultDatasourceIds ?? []).filter(id => this.findDatasource(id))
+    // Bot defaults: botDefault* (new) or larkDefault* (legacy alias); stored under the new keys.
+    const role = input.botDefaultRole ?? input.larkDefaultRole
+    if (role !== undefined) { s.botDefaultRole = oneOf(role, ['none', 'viewer', 'analyst'], 'botDefaultRole'); delete s.larkDefaultRole }
+    const dsIds = input.botDefaultDatasourceIds !== undefined ? input.botDefaultDatasourceIds : input.larkDefaultDatasourceIds
+    if (dsIds !== undefined) { s.botDefaultDatasourceIds = dsIds === null ? null : (dsIds ?? []).filter(id => this.findDatasource(id)); delete s.larkDefaultDatasourceIds }
     if (input.schemaNotifyChannel !== undefined) s.schemaNotifyChannel = this.state.channels.some(c => c.id === input.schemaNotifyChannel) ? input.schemaNotifyChannel : ''
     if (input.schemaCheckDaily !== undefined) s.schemaCheckDaily = /^\d{2}:\d{2}$/.test(String(input.schemaCheckDaily)) ? input.schemaCheckDaily : ''
     if (input.schemaOverviewMax !== undefined) s.schemaOverviewMax = clampInt(input.schemaOverviewMax, 1, 100000, 'schemaOverviewMax')
@@ -68,7 +91,7 @@ export const methods = {
     this.state.settings = s
     if (lowered) this.records.trim()
     await this.save()
-    return structuredClone(s)
+    return this.publicSettings()
   },
 
   settingsFor(ds) {
@@ -238,8 +261,8 @@ export const methods = {
     delete this.state.evals?.[ds.id]
     this.state.alerts = (this.state.alerts ?? []).filter(a => a.datasourceId !== ds.id)
     for (const u of this.state.users ?? []) if (Array.isArray(u.datasourceIds)) u.datasourceIds = u.datasourceIds.filter(x => x !== ds.id)
-    if (Array.isArray(this.state.settings.larkDefaultDatasourceIds)) this.state.settings.larkDefaultDatasourceIds = this.state.settings.larkDefaultDatasourceIds.filter(x => x !== ds.id)
-    for (const c of Object.values(this.state.larkSessions ?? {})) if (c.datasourceId === ds.id) c.datasourceId = null
+    for (const k of ['botDefaultDatasourceIds', 'larkDefaultDatasourceIds']) if (Array.isArray(this.state.settings[k])) this.state.settings[k] = this.state.settings[k].filter(x => x !== ds.id)
+    for (const c of Object.values(this.state.botConversations ?? {})) if (c.datasourceId === ds.id) c.datasourceId = null
     try { const { rm } = await import('node:fs/promises'); await rm(join(this.dir, `schema-${ds.id}.json`), { force: true }) } catch {}
     this.schemas.delete(ds.id)
     if (ds.type === 'sqlite' && ds.file?.startsWith(this.dir)) { try { const { rm } = await import('node:fs/promises'); await rm(ds.file, { force: true }); await rm(`${ds.file}-wal`, { force: true }); await rm(`${ds.file}-shm`, { force: true }) } catch {} }
