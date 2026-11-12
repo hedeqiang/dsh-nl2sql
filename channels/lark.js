@@ -1075,7 +1075,7 @@ const APP_SETUP = {
     'Enable the bot for this channel so the long connection is online, then choose "Receive events through persistent connection" in Events & Callbacks.',
     'Subscribe to im.message.receive_v1, create and publish a version.',
     'In Events & Callbacks → Callback configuration, also choose the persistent connection and add the callback "card.action.trigger" (card interaction); otherwise the Breakdown / Why / Details / Pin buttons on answer cards do nothing.',
-    'Add the bot to groups; @ it to ask. Send "帮助" for commands.',
+    'Add the bot to groups; @ it to ask. Send "help" for commands.',
   ],
 }
 

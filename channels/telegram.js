@@ -624,7 +624,7 @@ const telegramBot = {
   description: { zh: '通过 Bot API 推送到群组、频道或私聊；长轮询接收提问，无需公网地址。', en: 'Push to groups, channels or private chats via the Bot API; receives questions by long polling, no public URL needed.' },
   fields: [
     { key: 'botToken', type: 'secret', secret: true, required: true, label: { zh: 'Bot Token', en: 'Bot token' }, placeholder: '123456789:AAH…', help: { zh: '在 @BotFather 发送 /newbot 创建机器人后获得', en: 'From @BotFather (/newbot)' } },
-    { key: 'chatId', type: 'text', required: false, target: true, label: { zh: 'Chat ID（推送目标）', en: 'Chat ID (push target)' }, placeholder: '-1001234567890 或 @mychannel', pattern: CHAT_RE.source, help: { zh: '群组/超级群为负数（通常以 -100 开头），公开频道可填 @用户名；仅作机器人使用时可留空', en: 'Negative number for groups (usually -100…), or @username for public channels; may be empty for bot-only use' } },
+    { key: 'chatId', type: 'text', required: false, target: true, label: { zh: 'Chat ID（推送目标）', en: 'Chat ID (push target)' }, placeholder: '-1001234567890 / @mychannel', pattern: CHAT_RE.source, help: { zh: '群组/超级群为负数（通常以 -100 开头），公开频道可填 @用户名；仅作机器人使用时可留空', en: 'Negative number for groups (usually -100…), or @username for public channels; may be empty for bot-only use' } },
     { key: 'apiBase', type: 'url', required: false, label: { zh: 'API 地址（可选）', en: 'API base URL (optional)' }, placeholder: DEFAULT_API_BASE, help: { zh: '自建 Bot API 服务器或反向代理地址；留空使用官方 api.telegram.org', en: 'Self-hosted Bot API server or proxy; empty = api.telegram.org' } },
   ],
   capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'text', buttons: true, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: TEXT_LIMIT },
