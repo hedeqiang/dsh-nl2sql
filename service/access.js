@@ -212,6 +212,43 @@ export const methods = {
     }
   },
 
+  /**
+   * Remember an IM identity that talked to a bot (refused or not), so admins can
+   * add it as a member with one click instead of looking up ids. Bounded list,
+   * most recent first; keyed by (platform, kind, id).
+   */
+  noteSeenIdentity({ platform, kind, id, name, email, chatName, channelId, refused }) {
+    if (!platform || !id) return
+    this.state.seenIdentities ??= []
+    const list = this.state.seenIdentities
+    const key = `${platform}:${kind}:${id}`
+    const i = list.findIndex(x => `${x.platform}:${x.kind}:${x.id}` === key)
+    const prev = i >= 0 ? list.splice(i, 1)[0] : {}
+    list.unshift({ ...prev, platform, kind, id: String(id), ...(name ? { name: String(name).slice(0, 60) } : {}), ...(email ? { email: String(email).slice(0, 200) } : {}), ...(chatName ? { chatName: String(chatName).slice(0, 80) } : {}), ...(channelId ? { channelId } : {}), lastAt: Date.now(), count: (prev.count ?? 0) + 1, refused: Boolean(refused) })
+    if (list.length > 200) list.length = 200
+  },
+
+  /**
+   * People and group chats that talked to a bot recently, for the member form:
+   * [{ platform, kind:'person'|'chat', id, name?, email?, chatName?, lastAt, count, refused, memberId? }].
+   * `memberId` is set when the identity already belongs to a member.
+   */
+  listSeenIdentities({ kind, platform } = {}) {
+    const users = (this.state.users ?? []).map(u => normalizeUserRecord(u))
+    // Group chats seen in bot conversations count too (older data has no seen list).
+    const seen = [...(this.state.seenIdentities ?? [])]
+    for (const c of Object.values(this.state.botConversations ?? {})) {
+      if (c.chatType === 'group' && c.chatId && !seen.some(x => x.kind === 'chat' && x.platform === c.platform && x.id === String(c.chatId))) seen.push({ platform: c.platform ?? 'lark', kind: 'chat', id: String(c.chatId), chatName: c.chatName, name: c.chatName, lastAt: c.lastAt ?? c.createdAt, count: 1, refused: false })
+    }
+    return seen
+      .filter(x => (!kind || x.kind === kind) && (!platform || x.platform === platform))
+      .map(x => {
+        const owner = users.find(u => u.kind === x.kind && u.identities.some(i => i.platform === x.platform && i.id === x.id))
+        return { ...x, ...(owner ? { memberId: owner.id, memberName: owner.name } : {}) }
+      })
+      .sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0))
+  },
+
   /** Back-compat alias of resolveActor for Lark. */
   resolveLarkActor({ openId, email, name, chatId, chatType }) {
     return this.resolveActor({ platform: 'lark', userId: openId, email, name, chatId, chatType })

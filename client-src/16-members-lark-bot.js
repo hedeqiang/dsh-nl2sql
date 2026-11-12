@@ -34,6 +34,69 @@
         h('button', { type: 'button', className: 'n2s-btn small ghost', style: { justifySelf: 'start' }, onClick: () => onChange([...rows, { platform: rows[rows.length - 1]?.platform ?? platforms[0], id: '', email: '' }]) }, '+ ', t('mb.ids.add')))
     }
 
+    /**
+     * One-click identity picks: people and groups that already talked to a bot
+     * (recorded by the host, including refused ones), plus the groups a bot is
+     * in (channels whose kind can list targets). No id lookup needed.
+     */
+    function IdentityPicker({ t, kind, catalog, onPick, chosen }) {
+      const seen = useAsync(() => call('listSeenIdentities', { kind }).catch(() => []), [kind])
+      const channels = useChannels()
+      const listable = channels.filter(c => (c.capabilities ?? findKind(catalog, c.type)?.kind?.capabilities)?.listTargets)
+      const [groups, setGroups] = useState(null)
+      const [loadingGroups, setLoadingGroups] = useState(false)
+      const loadGroups = async () => {
+        setLoadingGroups(true)
+        const out = []
+        for (const c of listable) {
+          try { for (const g of await call('listChannelTargets', { id: c.id })) out.push({ platform: c.platform, kind: 'chat', id: String(g.id), name: g.name, via: c.name }) } catch (e) { notifyError(e) }
+        }
+        setGroups(out); setLoadingGroups(false)
+      }
+      useEffect(() => { if (kind === 'chat' && listable.length && groups === null) loadGroups() }, [kind, listable.length])
+      const isChosen = (x) => chosen.some(r => r.platform === x.platform && r.id === x.id)
+      const items = [...(seen.value ?? [])]
+      if (kind === 'chat') for (const g of groups ?? []) if (!items.some(x => x.platform === g.platform && x.id === g.id)) items.push(g)
+      const label = (x) => x.name || x.chatName || x.email || x.id
+      return h('div', { className: 'n2s-field full n2s-idpicker' },
+        h('div', { className: 'n2s-row' },
+          h('span', { className: 'n2s-flabel' }, kind === 'chat' ? t('mb.pick.chats') : t('mb.pick.people')),
+          h('span', { className: 'n2s-grow' }),
+          kind === 'chat' && listable.length > 0 && h('button', { type: 'button', className: 'n2s-link n2s-small', disabled: loadingGroups, onClick: loadGroups }, loadingGroups ? h('span', { className: 'n2s-spin' }) : Icon.refresh(12), t('mb.pick.refresh'))),
+        seen.loading && !seen.value ? h('div', { className: 'n2s-skel', style: { height: 34 } }) :
+          items.length === 0
+            ? h('div', { className: 'n2s-faint n2s-small' }, kind === 'chat' ? t('mb.pick.noChats') : t('mb.pick.noPeople'))
+            : h('div', { className: 'n2s-pickchips', role: 'list' }, items.slice(0, 30).map(x => {
+              const taken = x.memberId && !isChosen(x)
+              return h('button', {
+                key: `${x.platform}:${x.id}`, type: 'button', role: 'listitem', className: 'n2s-pickchip', 'aria-pressed': isChosen(x), disabled: Boolean(taken),
+                title: [`${platformName(t, x.platform, catalog)} · ${x.id}`, x.email, x.via ? fmt(t, 'mb.pick.via', { name: x.via }) : '', taken ? fmt(t, 'mb.pick.taken', { name: x.memberName }) : '', x.refused ? t('mb.pick.refused') : ''].filter(Boolean).join('\n'),
+                onClick: () => onPick(x),
+              },
+              h(PlatformMark, { t, platform: x.platform, size: 16 }),
+              h('span', { className: 'n2s-pickchip-name' }, label(x)),
+              x.refused && !x.memberId && h('span', { className: 'n2s-badge warn' }, t('mb.pick.pending')),
+              taken && h('span', { className: 'n2s-faint' }, t('mb.pick.added')),
+              x.lastAt && h('span', { className: 'n2s-faint' }, shortTime(x.lastAt)))
+            })),
+        h('div', { className: 'n2s-faint n2s-small' }, kind === 'chat' ? t('mb.pick.chatsHint') : t('mb.pick.peopleHint')))
+    }
+
+    /** People / groups refused by a bot because they are not members yet: add with one click. */
+    function PendingMembers({ t, onAdd }) {
+      const seen = useAsync(() => call('listSeenIdentities', {}).catch(() => []), [])
+      const { catalog } = useCatalog(t)
+      const pending = (seen.value ?? []).filter(x => x.refused && !x.memberId).slice(0, 6)
+      if (!pending.length) return null
+      return h('div', { className: 'n2s-notice warn n2s-pending', role: 'status', style: { marginBottom: 12 } },
+        h('div', { style: { marginBottom: 6 } }, fmt(t, 'mb.pending.title', { n: pending.length })),
+        h('div', { className: 'n2s-pickchips' }, pending.map(x => h('button', { key: `${x.platform}:${x.kind}:${x.id}`, type: 'button', className: 'n2s-pickchip', onClick: () => onAdd(x), title: `${platformName(t, x.platform, catalog)} · ${x.id}` },
+          h(PlatformMark, { t, platform: x.platform, size: 16 }),
+          h('span', { className: 'n2s-pickchip-name' }, x.name || x.chatName || x.id),
+          h('span', { className: 'n2s-faint' }, x.kind === 'chat' ? t('mb.kind2.chat') : t('mb.kind2.person')),
+          h('span', { className: 'n2s-link' }, t('mb.pending.add'))))))
+    }
+
     function IdentityChips({ t, u, catalog }) {
       const ids = identitiesOf(u)
       if (!ids.length) return h('span', { className: 'n2s-badge warn' }, t('mb.ids.none'))
@@ -41,11 +104,11 @@
         h(PlatformMark, { t, platform: x.platform, size: 16 }), h('span', { className: 'n2s-mono' }, x.id || x.email))))
     }
 
-    function UserForm({ t, initial, datasources, onDone, onCancel }) {
+    function UserForm({ t, initial, prefill, datasources, onDone, onCancel }) {
       const { catalog } = useCatalog(t)
       const [form, setForm] = useState(() => {
-        const base = { kind: 'person', name: '', role: 'analyst', allDatasources: initial ? initial.datasourceIds === null : false, datasourceIds: [], note: '', ...(initial ?? {}) }
-        const ids = identitiesOf(initial)
+        const base = { kind: prefill?.kind ?? 'person', name: prefill ? (prefill.name || prefill.chatName || '') : '', role: 'analyst', allDatasources: initial ? initial.datasourceIds === null : false, datasourceIds: [], note: '', ...(initial ?? {}) }
+        const ids = prefill ? [{ platform: prefill.platform, id: prefill.id, ...(prefill.kind === 'person' && prefill.email ? { email: prefill.email } : {}) }] : identitiesOf(initial)
         return { ...base, identities: ids.length ? ids : [{ platform: 'lark', id: '', email: '' }] }
       })
       const [error, setError] = useState(null)
@@ -77,6 +140,11 @@
           h('div', { className: 'n2s-field full' }, h('span', { id: 'n2s-mb-kind' }, t('mb.kind')), h('div', { className: 'n2s-seg', role: 'group', 'aria-labelledby': 'n2s-mb-kind', style: { justifySelf: 'start' } }, ['person', 'chat'].map(v => h('button', { key: v, type: 'button', 'aria-pressed': form.kind === v, disabled: Boolean(initial?.id), onClick: () => setForm(f => ({ ...f, kind: v })) }, t(`mb.kind2.${v}`))))),
           h('label', { className: 'n2s-field' }, h('span', null, t('im.name')), h('input', { className: 'n2s-input', value: form.name, onChange: set('name') })),
           h('label', { className: 'n2s-field' }, h('span', null, t('mb.role')), h('select', { className: 'n2s-select', value: form.role, onChange: set('role') }, ['admin', 'analyst', 'viewer'].map(r => h('option', { key: r, value: r }, t(`mb.role.${r}`)))), h('span', { className: 'n2s-faint n2s-small' }, t(`mb.roleHint.${form.role}`))),
+          !initial?.id && h(IdentityPicker, { t, kind: form.kind, catalog, chosen: form.identities, onPick: (x) => setForm(f => {
+            const exists = f.identities.some(r => r.platform === x.platform && r.id === x.id)
+            const rows = exists ? f.identities.filter(r => !(r.platform === x.platform && r.id === x.id)) : [...f.identities.filter(r => r.id || r.email), { platform: x.platform, id: x.id, ...(f.kind === 'person' && x.email ? { email: x.email } : {}) }]
+            return { ...f, identities: rows.length ? rows : [{ platform: x.platform, id: '', email: '' }], name: f.name || (exists ? f.name : (x.name || x.chatName || '')) }
+          }) }),
           h(IdentityEditor, { t, kind: form.kind, rows: form.identities, catalog, errors: idErrors, onChange: (rows) => { setForm(f => ({ ...f, identities: rows })); setIdErrors({}) } }),
           h('div', { className: 'n2s-field full' }, h('span', null, t('mb.scope')),
             h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: form.allDatasources, onChange: set('allDatasources') }), t('mb.allDs')),
@@ -167,7 +235,8 @@
       return h('div', null,
         h(SectionHead, { title: t('tab.members'), desc: t('mb.hint') }, h('button', { type: 'button', className: 'n2s-btn primary', onClick: () => setEditing({}) }, '+ ', t('mb.add'))),
         h(BotsOverview, { t }),
-        editing && h(UserForm, { key: editing.id ?? 'new', t, datasources, initial: editing.id ? editing : null, onCancel: () => setEditing(null), onDone: () => { setEditing(null); users.reload() } }),
+        !editing && h(PendingMembers, { t, onAdd: (x) => setEditing({ prefill: x }) }),
+        editing && h(UserForm, { key: editing.id ?? (editing.prefill ? `p:${editing.prefill.id}` : 'new'), t, datasources, prefill: editing.prefill, initial: editing.id ? editing : null, onCancel: () => setEditing(null), onDone: () => { setEditing(null); users.reload() } }),
         settings.value && h('div', { className: 'n2s-setnote', style: { marginBottom: 10 } },
           t('mb.default'), ' ', h('strong', null, t(`mb.defaultRole.${settings.value.botDefaultRole ?? settings.value.larkDefaultRole ?? 'none'}`)), ' · ',
           h('button', { type: 'button', className: 'n2s-link', onClick: () => fbCtx.navigate?.({ tab: 'admin', section: 'settings' }) }, t('set.changeInSettings'))),

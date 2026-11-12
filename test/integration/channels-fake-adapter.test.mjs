@@ -218,7 +218,57 @@ try {
     await bot.receive({ id: 'q3', text: '帮助', userId: 'stranger', chatType: 'p2p', chatId: 'dm1' })
     assert.match(bot.replies.at(-1).text, /没有开通数据问答权限/)
     await bot.receive({ id: 'q4', text: '数据源', userId: 'u1' })
-    assert.match(bot.replies.at(-1).text, /可用数据源：A/)
+    assert.match(bot.replies.at(-1).text, /可用数据源：\n· A/)
+  })
+
+  await test('members: people / groups that talked to the bot are offered for one-click adding (refused ones flagged)', async () => {
+    await bot.receive({ id: 'q5', text: '今天多少', userId: 'newbie', chatId: 'g-new', chatType: 'group' })
+    assert.match(bot.replies.at(-1).text, /没有开通数据问答权限/)
+    const people = await call('listSeenIdentities', { kind: 'person' })
+    const nb = people.find(x => x.id === 'newbie')
+    assert.ok(nb, JSON.stringify(people))
+    assert.equal(nb.platform, 'fakeim'); assert.equal(nb.name, 'n-newbie'); assert.equal(nb.refused, true); assert.equal(nb.memberId, undefined)
+    const u1 = people.find(x => x.id === 'u1')
+    assert.equal(u1.memberName, '甲', 'existing members are marked')
+    const chats = await call('listSeenIdentities', { kind: 'chat' })
+    assert.ok(chats.some(x => x.id === 'g-new' && x.refused))
+    assert.ok(chats.some(x => x.id === 'g1' && x.memberName === '假群'))
+    // adding it clears the pending state
+    await call('saveUser', { kind: 'person', name: nb.name, identities: [{ platform: nb.platform, id: nb.id }], role: 'analyst', datasourceIds: [ds.id] })
+    assert.equal((await call('listSeenIdentities', { kind: 'person' })).find(x => x.id === 'newbie').memberName, 'n-newbie')
+  })
+
+  await test('data source: prompt lists usable sources; question routes to the matching source; 切换 pins, 自动 unpins', async () => {
+    // Second data source: a local file with an obviously different subject.
+    const csv = Buffer.from('city,amount\nA,10\nB,20\n').toString('base64')
+    const up = await call('importUpload', { fileName: '城市销售额.csv', base64: csv })
+    const fileDs = up.datasourceId
+    await call('saveDatasource', { id: fileDs, name: '销售文件', description: '各城市销售额' }).catch(() => {})
+    await call('analyzeSchema', { id: fileDs, refresh: true })
+    await call('saveUser', { id: (await call('listUsers')).find(u => u.name === '甲').id, datasourceIds: [ds.id, fileDs] })
+    await call('saveUser', { id: (await call('listUsers')).find(u => u.name === '假群').id, datasourceIds: [ds.id, fileDs] })
+    const dsName = (await call('listDatasources')).find(d => d.id === fileDs).name
+    // a blockchain question → MySQL source A
+    await bot.receive({ id: 'r1', text: `Q:${SQL}`, userId: 'u1' })
+    assert.match(prompts.at(-1), new RegExp(`可用的数据源：\\n- A（mysql · testdb）.*主要表：.*blockchain_transactions[\\s\\S]*- ${dsName}（sqlite`), prompts.at(-1).slice(0, 600))
+    assert.match(prompts.at(-1), /nl2sql_datasource action=use/)
+    // a question naming the city sales file → routed to the file source
+    const before = prompts.length
+    await bot.receive({ id: 'r2', text: '各城市销售额 Q:select 1 as x', userId: 'u1' })
+    assert.equal(prompts.length, before + 1)
+    assert.match(prompts.at(-1), new RegExp(`当前数据源：${dsName}（按问题自动选择）`), prompts.at(-1).slice(0, 300))
+    // scope changed → a new conversation key (by design); take the most recent one
+    const conv = Object.values(service.state.botConversations).filter(c => c.channelId === ch.id && c.chatId === 'g1').sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0))[0]
+    assert.equal(service.state.sessions[conv.sessionId], fileDs, 'session bound to the routed source')
+    // 切换 pins (fuzzy name), 自动 unpins
+    await bot.receive({ id: 'r3', text: '切换 a', userId: 'u1' })
+    assert.match(bot.replies.at(-1).text, /已切换到数据源「A」/)
+    await bot.receive({ id: 'r4', text: '各城市销售额 Q:select 1 as x', userId: 'u1' })
+    assert.match(prompts.at(-1), /数据源：A（群内已用「切换」指定/)
+    await bot.receive({ id: 'r5', text: '自动', userId: 'u1' })
+    assert.match(bot.replies.at(-1).text, /按问题自动选择数据源/)
+    await bot.receive({ id: 'r6', text: '各城市销售额 Q:select 1 as x', userId: 'u1' })
+    assert.match(prompts.at(-1), new RegExp(`当前数据源：${dsName}（按问题自动选择）`))
   })
 
   await test('actions: re-authorized per click (rate limit, viewer, wrong chat, wrong channel); breakdown replies', async () => {

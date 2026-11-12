@@ -412,6 +412,14 @@
 .n2s-morebtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin-top:6px;border:.5px dashed var(--n2s-line-2);border-radius:var(--n2s-radius-sm);background:transparent;color:var(--n2s-muted);font:inherit;font-size:13px;cursor:pointer}
 .n2s-morebtn:hover{background:var(--n2s-hover);color:var(--dsw-alias-label-primary)}
 .n2s-btn.danger-text{color:var(--n2s-err)}
+/* ---- member identity picker ---- */
+.n2s-pickchips{display:flex;flex-wrap:wrap;gap:6px}
+.n2s-pickchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;height:30px;padding:0 10px;border:.5px solid var(--n2s-line-2);border-radius:999px;background:var(--n2s-surface);color:inherit;font:inherit;font-size:12.5px;cursor:pointer}
+.n2s-pickchip:hover:not(:disabled){background:var(--n2s-hover)}
+.n2s-pickchip[aria-pressed=true]{border-color:var(--n2s-accent);background:var(--n2s-accent-soft,rgba(51,112,255,.08));color:var(--n2s-accent)}
+.n2s-pickchip:disabled{opacity:.55;cursor:default}
+.n2s-pickchip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.n2s-idpicker{gap:6px}
 /* ---- dashboard v2 ---- */
 .n2s-srcbadge{display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
 .n2s-seg.small button{height:26px;padding:0 10px;font-size:12px}

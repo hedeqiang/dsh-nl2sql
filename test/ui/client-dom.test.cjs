@@ -577,6 +577,34 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.equal(su.larkOpenId, 'ou_5'); assert.equal(su.email, 'w@x.com'); assert.equal(su.kind, 'person'); assert.equal(su.role, 'analyst')
   })
 
+  await test('成员与权限: people / groups who talked to the bot are one-click picks; refused ones shown as pending', async () => {
+    responses.listSeenIdentities = (p) => [
+      { platform: 'lark', kind: 'person', id: 'ou_new', name: '赵六', email: 'z6@x.com', lastAt: Date.now() - 60000, count: 2, refused: true },
+      { platform: 'lark', kind: 'person', id: 'ou_1', name: '张三', lastAt: Date.now() - 90000, count: 5, refused: false, memberId: 'u1', memberName: '张三' },
+      { platform: 'lark', kind: 'chat', id: 'oc_ops', name: '运营群', chatName: '运营群', lastAt: Date.now() - 30000, count: 1, refused: true },
+    ].filter((x) => !p?.kind || x.kind === p.kind)
+    await openAdmin('设置'); await openAdmin('成员与权限'); await settle(30)
+    assert.match(text(), /有 2 个人或群向机器人提问时因未开通被拒绝/)
+    // banner click → form prefilled (group)
+    await clickEl([...document.querySelectorAll('.n2s-pending .n2s-pickchip')].find((b) => b.textContent.includes('运营群')), 40)
+    let form = document.querySelector('.n2s-card')
+    assert.equal(form.querySelector('input').value, '运营群', 'name prefilled')
+    assert.equal(form.querySelector('input[aria-label="身份 1 的 ID"]').value, 'oc_ops', 'chat id prefilled')
+    await click('取消', form); await settle()
+    // new person: pick from people who talked to the bot
+    await click('+ 添加成员'); await settle(30)
+    form = document.querySelector('.n2s-card')
+    const chips = [...form.querySelectorAll('.n2s-idpicker .n2s-pickchip')]
+    assert.ok(chips.find((c) => c.textContent.includes('张三')).disabled, 'existing member not pickable')
+    await clickEl(chips.find((c) => c.textContent.includes('赵六')), 20)
+    assert.equal(form.querySelector('input').value, '赵六')
+    assert.equal(form.querySelector('input[aria-label="身份 1 的 ID"]').value, 'ou_new')
+    assert.equal(form.querySelector('input[aria-label="身份 1 的邮箱（可选）"]').value, 'z6@x.com')
+    await click('保存', form); await settle(30)
+    assert.deepEqual(rpcCalls.filter((c) => c.method === 'saveUser').pop().payload.identities, [{ platform: 'lark', id: 'ou_new', email: 'z6@x.com' }])
+    delete responses.listSeenIdentities
+  })
+
   await test('设置 (new host): 渠道与机器人 group uses botDefaultRole, default channel, bot summary', async () => {
     await openAdmin('设置')
     await click('渠道与机器人')

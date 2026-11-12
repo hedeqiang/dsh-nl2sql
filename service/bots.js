@@ -279,10 +279,15 @@ export const methods = {
     const name = label(platform)
     const userId = m.sender?.id != null ? String(m.sender.id) : undefined
     const resolved = this.resolveActor({ platform, userId, email: m.sender?.email, name: m.sender?.name, chatId: m.chatId != null ? String(m.chatId) : m.chatId, chatType: m.chatType })
-    if (resolved.refused) { await reply(resolved.refused); return }
+    // Remember who/which group talked to the bot: the member form offers them as one-click picks.
+    let chatName
+    if (m.chatType === 'group') { try { chatName = typeof m.chatName === 'function' ? await m.chatName() : m.chatName } catch {} }
+    if (userId) this.noteSeenIdentity({ platform, kind: 'person', id: userId, name: m.sender?.name, email: m.sender?.email, channelId: m.channelId, refused: Boolean(resolved.refused) })
+    if (m.chatType === 'group' && m.chatId) this.noteSeenIdentity({ platform, kind: 'chat', id: String(m.chatId), name: chatName, chatName, channelId: m.channelId, refused: Boolean(resolved.refused) })
+    if (resolved.refused) { await this.save(); await reply(resolved.refused); return }
     const actor = resolved.actor
     // Commands: 帮助 / 数据源 / 切换 <名称> / 新对话
-    const cmd = text.match(/^\/?(帮助|help|数据源|切换数据源|切换|新对话|reset|start)\s*(.*)$/i)
+    const cmd = text.match(/^\/?(帮助|help|数据源|切换数据源|切换|自动|auto|新对话|reset|start)\s*(.*)$/i)
     // Members with different scopes must not share a conversation: per-user sessions
     // whenever the sender's effective scope or rules differ from the chat's.
     const scopeSig = JSON.stringify([actor.datasourceIds, actor.role, actor.rowRules ?? []])
@@ -292,23 +297,35 @@ export const methods = {
     this.state.botConversations ??= {}
     const convs = this.state.botConversations
     const conv = convs[key] ?? { key, channelId: m.channelId ?? null, platform, chatId: m.chatId, chatType: m.chatType, sessionId: null, datasourceId: actor.defaultDatasourceId, createdAt: Date.now() }
+    if (chatName && !conv.chatName) conv.chatName = chatName
     const allowedDs = this.state.datasources.filter(d => !Array.isArray(actor.datasourceIds) || actor.datasourceIds.includes(d.id))
     if (conv.datasourceId && !allowedDs.some(d => d.id === conv.datasourceId)) conv.datasourceId = allowedDs[0]?.id ?? null
     if (cmd) {
       const verb = cmd[1].toLowerCase()
-      if (verb === '帮助' || verb === 'help' || verb === 'start') { await reply(`直接${m.chatType === 'group' ? ' @我 ' : ''}提问即可，例如「上周每天的订单量」。\n命令：数据源（查看可用数据源）、切换 <名称>、新对话。\n当前数据源：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${actor.role === 'viewer' ? '\n你是只读成员：可以查询指标库中的指标、已验证的常见问题和看板。' : ''}`); return }
-      if (verb === '数据源') { await reply(`可用数据源：${allowedDs.map(d => d.name).join('、') || '无'}\n当前：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}`); return }
+      if (verb === '帮助' || verb === 'help' || verb === 'start') { await reply(`直接${m.chatType === 'group' ? ' @我 ' : ''}提问即可，例如「上周每天的订单量」。\n命令：数据源（查看可用数据源）、切换 <名称>、自动（按问题自动选择数据源）、新对话。\n当前数据源：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${conv.datasourcePinned ? '（已指定）' : allowedDs.length > 1 ? '（按问题自动选择）' : ''}${actor.role === 'viewer' ? '\n你是只读成员：可以查询指标库中的指标、已验证的常见问题和看板。' : ''}`); return }
+      if (verb === '数据源') { await reply(`可用数据源：\n${allowedDs.map(d => `· ${d.name}${d.description ? ` — ${d.description}` : ''}`).join('\n') || '无'}\n当前：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${conv.datasourcePinned ? '（已指定，发送「自动」恢复按问题自动选择）' : allowedDs.length > 1 ? '（按问题自动选择；发送「切换 <名称>」固定）' : ''}`); return }
+      if (verb === '自动' || verb === 'auto') { delete conv.datasourcePinned; convs[key] = conv; await this.save(); await reply(`已改为按问题自动选择数据源（可用：${allowedDs.map(d => d.name).join('、')}）。`); return }
       if (verb === '新对话' || verb === 'reset') { conv.sessionId = null; convs[key] = conv; await this.save(); await reply('已开始新对话。'); return }
-      const target = allowedDs.find(d => d.name === cmd[2].trim() || d.id === cmd[2].trim())
+      const want = cmd[2].trim().toLowerCase()
+      const target = allowedDs.find(d => d.name.toLowerCase() === want || d.id === cmd[2].trim()) ?? (want ? allowedDs.filter(d => d.name.toLowerCase().includes(want) || (d.database ?? '').toLowerCase() === want) : []).find((_, __, arr) => arr.length === 1)
       if (!target) { await reply(`找不到可用的数据源「${cmd[2]}」。可用：${allowedDs.map(d => d.name).join('、')}`); return }
       conv.datasourceId = target.id
+      conv.datasourcePinned = true
       if (conv.sessionId) { this.state.sessions[conv.sessionId] = target.id }
       convs[key] = conv
       await this.save()
-      await reply(`已切换到数据源「${target.name}」。`)
+      await reply(`已切换到数据源「${target.name}」。之后的提问都会查询这个数据源；发送「自动」恢复按问题自动选择。`)
       return
     }
-    const ds = this.findDatasource(conv.datasourceId) ?? allowedDs[0]
+    // Which data source answers: an explicit 切换 wins; otherwise the question picks the most
+    // relevant one among those the member may use (schema + business knowledge), so people
+    // don't need to know data source names. The agent can still switch with nl2sql_datasource.
+    let ds = this.findDatasource(conv.datasourceId) ?? allowedDs[0]
+    let routed = null
+    if (!conv.datasourcePinned && allowedDs.length > 1) {
+      routed = await this.routeDatasource(text, allowedDs).catch(() => null)
+      if (routed?.ds) ds = routed.ds
+    }
     if (!ds) { await reply('没有可访问的数据源，请联系管理员。'); return }
     this.assertAccess(actor, ds)
     if (!this.ctx.get('sessionController')) { await reply('当前 Harness 不支持创建会话（缺少 sessionController）。'); return }
@@ -338,9 +355,17 @@ export const methods = {
         await this.save()
       }
       const where = m.chatType === 'group' ? `群「${conv.chatName ?? m.chatId}」` : '私聊'
-      const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（回答会以${name}消息发回该聊天：请用简洁的中文 Markdown 写结论，必要时附上查询结果；不要调用 nl2sql_send，也不要向用户提问——有歧义时说明你的假设后直接回答。${actor.role === 'viewer' ? '该成员是只读角色：只能用 nl2sql_metric 查询指标库，或复用 nl2sql_knowledge 中已验证的样例 SQL；不能自由编写 SQL。' : ''}）`
+      const dsLine = allowedDs.length > 1
+        ? (conv.datasourcePinned
+          ? `数据源：${ds.name}（群内已用「切换」指定，请只查询这个数据源）。`
+          : `当前数据源：${ds.name}${routed?.ds ? '（按问题自动选择）' : ''}。该成员可用的数据源：\n${await this.datasourceCatalog(allowedDs)}\n请先判断问题属于哪个数据源：若不是当前数据源，先用 nl2sql_datasource action=use 切换再查询；在回答开头注明使用的数据源。`)
+        : `数据源：${ds.name}。`
+      const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（${dsLine}\n回答会以${name}消息发回该聊天：请用简洁的中文 Markdown 写结论，必要时附上查询结果；不要调用 nl2sql_send，也不要向用户提问——有歧义时说明你的假设后直接回答。${actor.role === 'viewer' ? '该成员是只读角色：只能用 nl2sql_metric 查询指标库，或复用 nl2sql_knowledge 中已验证的样例 SQL；不能自由编写 SQL。' : ''}）`
       const requestId = platform === 'lark' ? `lark-${m.messageId}` : `${platform}-${m.chatId}-${m.messageId}`
+      if (conv.sessionId && this.state.sessions[conv.sessionId] !== ds.id) { this.state.sessions[conv.sessionId] = ds.id; await this.save() }
       const turn = await this.runAgentTurn({ sessionId: conv.sessionId, title: `${name} · ${conv.chatName ?? actor.name}`, requestId, text: prompt, prepare, timeoutMs: 600000 })
+      const usedDs = this.findDatasource(this.state.sessions[conv.sessionId]) ?? ds
+      if (usedDs.id !== conv.datasourceId) { conv.datasourceId = usedDs.id; convs[key] = conv }
       let body = turn.text
       if (turn.reason === 'timeout') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（查询超过 10 分钟仍未完成，已停止。请缩小范围后重试。）</font>`
       if (turn.reason === 'input-required') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（需要在 Harness 中确认后才能继续，已取消本次回答。）</font>`
@@ -350,7 +375,7 @@ export const methods = {
       let status = turn.reason === 'idle' ? 'ok' : 'error'
       let error = turn.reason === 'idle' ? undefined : turn.reason
       try {
-        await m.reply({ title: text.length > 40 ? `${text.slice(0, 40)}…` : text, text: body || '（没有生成文字回答）', results: shown, footer: `数据问答 · ${ds.name} · ${actor.name}` })
+        await m.reply({ title: text.length > 40 ? `${text.slice(0, 40)}…` : text, text: body || '（没有生成文字回答）', results: shown, footer: `数据问答 · ${usedDs.name} · ${actor.name}` })
       } catch (e) {
         status = 'error'
         error = e.message
@@ -360,6 +385,48 @@ export const methods = {
       this.recordDelivery({ channel: { id: m.channelId ?? SOURCE(platform), name: `${name}机器人 · ${conv.chatName ?? actor.name}`, platform }, title: text.slice(0, 60), status, ...(error ? { error } : {}), results: results.length, source: SOURCE(platform), sessionId: conv.sessionId, elapsedMs: Date.now() - started })
       await this.save()
     })
+  },
+
+  /**
+   * Pick the data source a question is about, among `candidates`, only on
+   * strong evidence: the question names the source (name / database /
+   * description), or it matches that source's business knowledge (verified
+   * examples, metrics, glossary). Schema keyword overlap alone is too weak
+   * (English table names vs Chinese questions), so otherwise returns null and
+   * the agent chooses from the catalog in the prompt.
+   */
+  async routeDatasource(question, candidates) {
+    const q = String(question ?? '').toLowerCase()
+    const scored = candidates.map(d => {
+      const named = [d.name, d.database, d.description].filter(x => x && String(x).length >= 2).some(x => q.includes(String(x).toLowerCase()))
+      let know = 0
+      try {
+        const f = this.searchKnowledge(d.id, question, 5)
+        know = Math.max(0, ...f.examples.map(x => x.score), ...f.metrics.map(x => x.score), ...f.glossary.map(x => x.score))
+      } catch {}
+      return { ds: d, score: (named ? 2 : 0) + know }
+    }).sort((a, b) => b.score - a.score)
+    const [top, second] = scored
+    if (!top || top.score < 0.5) return null
+    return top.score - (second?.score ?? 0) >= 0.3 ? { ds: top.ds, score: top.score } : null
+  },
+
+  /** One line per data source for the bot prompt: name, type, description and main tables. */
+  async datasourceCatalog(list) {
+    const lines = []
+    for (const d of list) {
+      let tables = ''
+      try {
+        const schema = this.schemas.get(d.id) ?? await this.readSchemaFile(d.id)
+        if (schema?.tables?.length) {
+          const rank = { fact: 0, dimension: 1, view: 2, other: 3, log: 4, config: 5 }
+          const top = [...schema.tables].sort((a, b) => (rank[a.role] ?? 3) - (rank[b.role] ?? 3) || (b.rows ?? 0) - (a.rows ?? 0)).slice(0, 12)
+          tables = `；主要表：${top.map(t => `${t.name}${t.comment ? `(${String(t.comment).split(/[\s,，。;；(（]/)[0].slice(0, 12)})` : ''}`).join(', ')}${schema.tables.length > 12 ? ` 等 ${schema.tables.length} 张` : ''}`
+        }
+      } catch {}
+      lines.push(`- ${d.name}（${d.type ?? 'mysql'}${d.database ? ` · ${d.database}` : ''}）${d.description ? `：${d.description.slice(0, 60)}` : ''}${tables}`)
+    }
+    return lines.join('\n')
   },
 
   /** Run tasks with the same key one after another. */
