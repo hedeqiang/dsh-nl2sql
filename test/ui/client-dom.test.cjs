@@ -40,7 +40,8 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     saveSettings: { maxRows: 900, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300, retention: { history: 20000 } },
     resetSettings: { maxRows: 500, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300 },
     onboardingStatus: { hasDatasource: true, analyzed: true, hasKnowledge: false, askedQuestion: false, hasChannel: false, dismissed: false }, dismissOnboarding: {},
-    askSuggestions: { examples: ['最近 30 天每天的日订单', '订单按状态的分布'], recent: [{ at: Date.now() - 120000, question: '昨天的订单量', sessionId: 's9', status: 'ok' }], tableCount: 2 },
+    askSuggestions: (p) => ({ examples: (p?.offset ?? 0) === 0 ? ['最近 30 天每天的日订单', '订单按状态的分布'] : ['第二批问题一', '第二批问题二'], total: 10, pageSize: 2, offset: p?.offset ?? 0, nextOffset: ((p?.offset ?? 0) + 2) % 10, recent: [{ id: 'h9', at: Date.now() - 120000, question: '昨天的订单量', sessionId: 's9', status: 'ok' }, { id: 'h8', at: Date.now() - 300000, question: '各状态订单', sessionId: 's8', status: 'ok' }], hasMoreRecent: (p?.recentLimit ?? 8) < 18, tableCount: 2 }),
+    deleteHistory: { deleted: 1 },
     listDashboards: { current: 'db-default', dashboards: [{ id: 'db-default', name: '默认看板', widgets: 2 }] }, reorderWidgets: {}, updateWidget: {},
     schedulerStatus: { running: true, lastTickAt: Date.now(), lastRan: [], nextAlerts: [] }, storageStats: { resultsDb: { bytes: 1048576, results: 3, cacheEntries: 1 }, records: { history: 12 }, stateBytes: 2048, dataDir: '/tmp/x' }, purgeRecords: {},
     exportConfig: { format: 'dsh-nl2sql-config', version: 1 }, aboutInfo: { version: '0.9.0', dataDir: '/tmp/x', nodeVersion: '24', sqliteVersion: '3', testsCommand: 'npm test' },
@@ -63,7 +64,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     tableOverview: { table: 'orders', results: [result, { title: 'bad', sql: 'x', error: 'boom' }] }, saveReport: {}, testConnection: { ok: true, version: 'PostgreSQL 18', tableCount: 2, latencyMs: 3, viaSsh: true, warnings: [] }, explain: { plan: [{ id: 1, table: 'orders', type: 'ALL', rows: 10 }] },
   }
   const rpcCalls = []
-  global.fetch = async (url, init) => { const { method, payload } = JSON.parse(init.body); rpcCalls.push({ method, payload }); return { status: 200, json: async () => ({ ok: true, value: responses[method] ?? null }) } }
+  global.fetch = async (url, init) => { const { method, payload } = JSON.parse(init.body); rpcCalls.push({ method, payload }); const r = responses[method]; return { status: 200, json: async () => ({ ok: true, value: typeof r === 'function' ? r(payload) : (r ?? null) }) } }
 
   // ------------------------------------------------------------ load the client plugin
   let plugin
@@ -129,6 +130,20 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.match(text(), /正在使用「本地」· 2 张表/)
     await click('不再显示')
     assert.ok(rpcCalls.some((c) => c.method === 'dismissOnboarding'))
+  })
+
+  await test('问答: 换一批 pages suggestions; recent delete and show more', async () => {
+    await click('换一批'); await settle(40)
+    assert.equal(rpcCalls.filter((c) => c.method === 'askSuggestions').pop().payload.offset, 2)
+    assert.match(text(), /第二批问题一/)
+    assert.doesNotMatch(text(), /最近 30 天每天的日订单/)
+    await clickEl(document.querySelector('button[aria-label="删除这条提问记录: 各状态订单"]'), 20)
+    await clickEl([...document.querySelectorAll('.n2s-modal button')].find((b) => b.textContent === '删除'), 40)
+    const del = rpcCalls.filter((c) => c.method === 'deleteHistory').pop()
+    assert.deepEqual(del.payload, { title: '各状态订单', datasourceId: 'd1' })
+    assert.doesNotMatch(document.querySelector('.n2s-recent').textContent, /各状态订单/)
+    await click('显示更多'); await settle(40)
+    assert.equal(rpcCalls.filter((c) => c.method === 'askSuggestions').pop().payload.recentLimit, 18)
   })
 
   await test('问答: explain plan, execute, feedback form, send to Lark', async () => {
@@ -219,10 +234,15 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await click('取消')
   })
 
-  await test('历史: row expands', async () => {
+  await test('历史: row expands; single entry can be deleted', async () => {
     await openTab('历史')
     await clickEl(document.querySelector('.n2s-hist-main'))
     assert.match(text(), /打开会话|重新执行/)
+    const before = document.querySelectorAll('.n2s-hist-row').length
+    await clickEl(document.querySelector('.n2s-rowdel'), 20)
+    await clickEl([...document.querySelectorAll('.n2s-modal button')].find((b) => b.textContent === '删除'), 40)
+    assert.equal(rpcCalls.filter((c) => c.method === 'deleteHistory').pop().payload.id, 'h1')
+    assert.equal(document.querySelectorAll('.n2s-hist-row').length, before - 1)
   })
 
   await test('数据源: policy editor, PG/ES forms, SSH & privacy sections, test connection', async () => {

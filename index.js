@@ -459,6 +459,7 @@ function registerRpc(ctx, service) {
     listDeliveries: () => service.listDeliveries(),
     listHistory: (p) => service.listHistory(p ?? {}),
     clearHistory: () => service.clearHistory(),
+    deleteHistory: (p) => service.deleteHistory(p ?? {}),
     explain: (p) => service.explain({ sql: p.sql, datasourceId: p.datasourceId }),
     getKnowledge: (p) => service.getKnowledge(p.datasourceId),
     saveKnowledgeItem: (p) => service.saveKnowledgeItem(p),

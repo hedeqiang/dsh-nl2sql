@@ -3,8 +3,16 @@
       const list = useAsync(() => call('listHistory', { ...filters, limit: 300 }), [filters.status, filters.source, filters.datasourceId, filters.search])
       const [open, setOpen] = useState(null)
       const [rerun, setRerun] = useState(null)
+      const [removed, setRemoved] = useState(() => new Set())
+      useEffect(() => { setRemoved(new Set()) }, [list.value])
       const set = (k) => (e) => setFilters(f => ({ ...f, [k]: e.target.value }))
-      const rows = list.value ?? []
+      const rows = (list.value ?? []).filter(r => !removed.has(r.id))
+      const removeRow = async (r) => {
+        if (!await confirmDialog({ title: t('hist.deleteOne'), message: r.title || oneLine(r.sql).slice(0, 120), confirmLabel: t('ds.delete'), danger: true })) return
+        setRemoved(x => new Set(x).add(r.id))
+        if (open === r.id) setOpen(null)
+        try { await call('deleteHistory', { id: r.id }); notify(t('hist.deleted'), 'ok') } catch (e) { notifyError(e); setRemoved(x => { const n = new Set(x); n.delete(r.id); return n }) }
+      }
       const statusBadge = (s) => h('span', { className: `n2s-badge ${s === 'error' ? 'err' : s === 'blocked' ? 'warn' : 'ok'}` }, t(`hist.status.${s ?? 'ok'}`))
       const exportCsv = () => {
         const cols = ['time', 'datasource', 'source', 'status', 'title', 'rows', 'elapsedMs', 'sessionId', 'sql', 'error']
@@ -46,7 +54,8 @@
         !list.loading && rows.length === 0 && h('div', { className: 'n2s-empty' }, h('h3', null, t('hist.empty')), h('div', null, t('hist.emptyHint'))),
         rows.length > 0 && h('div', { className: 'n2s-hist', role: 'list' }, rows.map(r => {
           const isOpen = open === r.id
-          return h('div', { key: r.id ?? `${r.at}`, className: 'n2s-hist-row', role: 'listitem' },
+          return h('div', { key: r.id ?? `${r.at}`, className: 'n2s-hist-row has-del', role: 'listitem' },
+            h('button', { type: 'button', className: 'n2s-iconbtn n2s-rowdel', title: t('hist.deleteOne'), 'aria-label': `${t('hist.deleteOne')}: ${r.title || t('hist.untitled')}`, onClick: () => removeRow(r) }, Icon.trash(14)),
             h('button', { type: 'button', className: 'n2s-hist-main', 'aria-expanded': isOpen, onClick: () => setOpen(isOpen ? null : r.id) },
               statusDot(r.status),
               h('span', { className: 'n2s-hist-what' },
@@ -69,7 +78,8 @@
                     setRerun({ id: r.id, busy: true })
                     try { setRerun({ id: r.id, result: await call('runQuery', { sql: r.sql, datasourceId: r.datasourceId, title: r.title, confirmScan: r.status !== 'blocked' }) }) } catch (e) { setRerun({ id: r.id, error: e.message }) }
                   },
-                }, Icon.refresh(13), t('result.rerun'))),
+                }, Icon.refresh(13), t('result.rerun')),
+                h('button', { type: 'button', className: 'n2s-btn small ghost danger-text', onClick: () => removeRow(r) }, Icon.trash(13), t('ds.delete'))),
               rerun?.id === r.id && (rerun.busy ? h('div', { className: 'n2s-skel', style: { height: 200 } }) : rerun.error ? h('div', { className: 'n2s-notice err' }, rerun.error) : h('div', { className: 'n2s-card' }, h(ResultView, { result: rerun.result, t, hideSql: true })))))
         })))
     }

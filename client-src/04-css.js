@@ -400,6 +400,18 @@
 
 .n2s-progress{width:min(260px,70%);height:4px;margin-top:12px;border-radius:999px;background:var(--n2s-fill);overflow:hidden}
 .n2s-progress span{display:block;height:100%;background:var(--n2s-accent);transition:width .2s}
+.n2s-shuffle{display:inline-flex;align-items:center;gap:4px}
+.n2s-shuffle:disabled{opacity:.6;cursor:default}
+.n2s-spinning{display:inline-flex;animation:n2s-spin .8s linear infinite}
+.n2s-recent-del,.n2s-rowdel{opacity:0;color:var(--n2s-faint)}
+.n2s-recent-row:hover .n2s-recent-del,.n2s-recent-del:focus-visible,.n2s-hist-row:hover .n2s-rowdel,.n2s-rowdel:focus-visible{opacity:1}
+.n2s-recent-del:hover,.n2s-rowdel:hover{color:var(--n2s-err)}
+@media (hover:none){.n2s-recent-del,.n2s-rowdel{opacity:1}}
+.n2s-hist-row.has-del{position:relative}
+.n2s-rowdel{position:absolute;top:10px;right:40px;z-index:1}
+.n2s-morebtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin-top:6px;border:.5px dashed var(--n2s-line-2);border-radius:var(--n2s-radius-sm);background:transparent;color:var(--n2s-muted);font:inherit;font-size:13px;cursor:pointer}
+.n2s-morebtn:hover{background:var(--n2s-hover);color:var(--dsw-alias-label-primary)}
+.n2s-btn.danger-text{color:var(--n2s-err)}
 /* ---- dashboard v2 ---- */
 .n2s-dash{grid-template-columns:repeat(6,minmax(0,1fr));align-items:start}
 .n2s-widget.w-third{grid-column:span 2}

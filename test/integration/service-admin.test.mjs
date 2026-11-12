@@ -98,14 +98,20 @@ try {
     await tool('nl2sql_query', { datasource: ds.id, sql: 'SELECT city, COUNT(*) AS n FROM orders GROUP BY city', title: '按城市' })
     await call('runQuery', { datasourceId: ds.id, sql: 'SELECT 1', title: 'ui query' })
     r = await call('askSuggestions', { datasourceId: ds.id })
-    assert.deepEqual(r.examples.slice(0, 3), ['最近 30 天每天的销售额', '订单数 按 city 分布', '每个城市的销售额'])
+    // Pool interleaves sources: metric, 👍 question, (verified examples), schema ×2, then the next metric template …
+    assert.deepEqual(r.examples.slice(0, 2), ['最近 30 天每天的销售额', '每个城市的销售额'])
+    const all = []; let off = 0
+    for (let i = 0; i < 10; i++) { const p = await call('askSuggestions', { datasourceId: ds.id, offset: off }); all.push(...p.examples); off = p.nextOffset; if (!off) break }
+    assert.ok(all.includes('订单数按city分布') && all.includes('订单数是多少'), JSON.stringify(all))
     assert.ok(!r.examples.includes('不该出现'))
     assert.deepEqual(r.recent.map(x => x.question), ['按城市', '订单总数'])
     assert.ok(r.recent[0].resultId && r.recent[0].sql && r.recent[0].status === 'ok' && r.recent[0].at)
     const en = await call('askSuggestions', { datasourceId: ds.id, locale: 'en' })
-    assert.deepEqual(en.examples.slice(0, 3), ['Daily 销售额 over the last 30 days', '订单数 by city', '每个城市的销售额'])
-    assert.ok(en.examples.includes('orders trend per day over the last 30 days'), JSON.stringify(en.examples))
-    assert.ok(en.examples.includes('What are the core business tables and how are they related?'))
+    assert.deepEqual(en.examples.slice(0, 2), ['Daily 销售额 over the last 30 days', '每个城市的销售额'])
+    const enAll = []; off = 0
+    for (let i = 0; i < 10; i++) { const p = await call('askSuggestions', { datasourceId: ds.id, locale: 'en', offset: off }); enAll.push(...p.examples); off = p.nextOffset; if (!off) break }
+    assert.ok(enAll.includes('orders trend per day over the last 30 days'), JSON.stringify(enAll))
+    assert.ok(enAll.includes('What are the core business tables and how are they related?'))
     const s = await call('onboardingStatus')
     assert.equal(s.hasKnowledge, true)
     assert.equal(s.askedQuestion, true)

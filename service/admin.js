@@ -29,35 +29,57 @@ export function tableLabel(t) {
   return t.comment ? t.comment.split(/[\s\-—–:：,，(（]/)[0].replace(/表$/, '') || t.name : t.name
 }
 
-/** Schema-based example questions: fact tables (largest first) with time / enum columns. */
+/**
+ * Schema-based example questions. Fact tables (largest first, then other
+ * tables) each contribute several templates: daily trend, distribution by an
+ * enum column, top-N by a measure, totals. Returns a long, deterministic pool;
+ * the Ask page shows a page of it at a time ("换一批").
+ */
 export function schemaExamples(schema, locale = 'zh') {
   const en = locale === 'en'
   if (!schema) return en ? ['What are the core business tables and what is each one for?', 'Which 10 tables hold the most rows?'] : ['这个库里有哪些核心业务表？分别是做什么的？', '数据量最大的 10 张表是哪些？']
-  const facts = schema.tables.filter(tb => tb.role === 'fact').sort((a, b) => (b.rows ?? 0) - (a.rows ?? 0))
-  const out = []
-  for (const f of facts.slice(0, 2)) {
-    // English labels use the table name; the comment is usually Chinese.
+  const byRows = (a, b) => (b.rows ?? 0) - (a.rows ?? 0)
+  const tables = [...schema.tables.filter(tb => tb.role === 'fact').sort(byRows), ...schema.tables.filter(tb => tb.role !== 'fact' && tb.role !== 'log' && tb.role !== 'config').sort(byRows)].filter(tb => !tb.blocked)
+  const colLabel = (c) => (en ? c.name : (c.comment || c.name).split(/[\s:：,，(（]/)[0])
+  // Round-robin: first template of every table, then the second, … so a page mixes tables.
+  const perTable = tables.slice(0, 12).map(f => {
     const label = en ? f.name.split('.').pop() : tableLabel(f)
-    if (f.columns.some(c => c.roles.includes('time'))) out.push(en ? `${label} trend per day over the last 30 days` : `最近 30 天每天的${label}数量趋势`)
-    const enumCol = f.columns.find(c => c.roles.includes('enum') && c.values?.length)
-    if (enumCol) out.push(en ? `${label} by ${enumCol.name}` : `${label}按${(enumCol.comment || enumCol.name).split(/[\s:：,，(（]/)[0]}的分布`)
-  }
-  out.push(en ? 'What are the core business tables and how are they related?' : '这个库里有哪些核心业务表？它们之间是什么关系？')
-  return out.slice(0, 5)
-}
-
-/** Example questions from the metric library (at most 2). */
-export function metricExamples(metrics, locale = 'zh') {
-  const en = locale === 'en'
+    const qs = []
+    const time = f.columns.find(c => c.roles.includes('time') && !/update|modif/i.test(c.name)) ?? f.columns.find(c => c.roles.includes('time'))
+    const enumCol = f.columns.find(c => c.roles.includes('enum') && c.values?.length && !c.roles.includes('sensitive'))
+    const enum2 = f.columns.filter(c => c.roles.includes('enum') && c.values?.length && !c.roles.includes('sensitive'))[1]
+    const measure = f.columns.find(c => c.roles.includes('measure') && !c.roles.includes('flag') && !c.roles.includes('id') && !/_no$|uid$|_id$/i.test(c.name))
+    if (time) qs.push(en ? `${label} trend per day over the last 30 days` : `最近 30 天每天的${label}数量趋势`)
+    if (enumCol) qs.push(en ? `${label} by ${enumCol.name}` : `${label}按${colLabel(enumCol)}的分布`)
+    if (measure && enumCol) qs.push(en ? `Total ${measure.name} of ${label} by ${enumCol.name}` : `各${colLabel(enumCol)}的${label}${colLabel(measure)}合计`)
+    if (time && enumCol) qs.push(en ? `How did ${label} by ${enumCol.name} change week over week?` : `${label}按${colLabel(enumCol)}的周环比变化`)
+    if (measure) qs.push(en ? `Top 10 ${label} by ${measure.name}` : `${colLabel(measure)}最大的 10 条${label}`)
+    if (enum2) qs.push(en ? `${label} by ${enumCol.name} and ${enum2.name}` : `${label}按${colLabel(enumCol)}和${colLabel(enum2)}的交叉分布`)
+    if (time) qs.push(en ? `How many ${label} were added yesterday compared with the day before?` : `昨天新增了多少${label}？和前一天相比如何？`)
+    return qs
+  })
   const out = []
-  for (const m of metrics) {
-    if (out.length >= 2) break
-    if (m.timeColumn) out.push(en ? `Daily ${m.name} over the last 30 days` : `最近 30 天每天的${m.name}`)
-    else if (m.dimensions?.length) out.push(en ? `${m.name} by ${m.dimensions[0]}` : `${m.name} 按 ${m.dimensions[0]} 分布`)
-    else out.push(en ? `What is the ${m.name}?` : `${m.name}是多少`)
-  }
+  for (let i = 0; perTable.some(q => q[i]); i++) for (const q of perTable) if (q[i]) out.push(q[i])
+  out.push(en ? 'What are the core business tables and how are they related?' : '这个库里有哪些核心业务表？它们之间是什么关系？')
+  out.push(en ? 'Which 10 tables hold the most rows?' : '数据量最大的 10 张表是哪些？')
   return out
 }
+
+/** Example questions from the metric library (two templates per metric). */
+export function metricExamples(metrics, locale = 'zh') {
+  const en = locale === 'en'
+  const first = []
+  const second = []
+  for (const m of metrics) {
+    if (m.timeColumn) first.push(en ? `Daily ${m.name} over the last 30 days` : `最近 30 天每天的${m.name}`)
+    else first.push(en ? `What is the ${m.name}?` : `${m.name}是多少`)
+    if (m.dimensions?.length) second.push(en ? `${m.name} by ${m.dimensions[0]}` : `${m.name}按${m.dimensions[0]}分布`)
+    else if (m.timeColumn) second.push(en ? `${m.name} this month vs last month` : `本月和上月的${m.name}对比`)
+  }
+  return [...first, ...second]
+}
+
+const ASK_PAGE = 6
 
 export const methods = {
   // ------------------------------------------------------------- storage
@@ -107,27 +129,49 @@ export const methods = {
 
   // ------------------------------------------------------- Ask & onboarding
 
-  async askSuggestions({ datasourceId, locale = 'zh' } = {}) {
+  /**
+   * Ask-page suggestions. `examples` is one page of a deterministic pool that
+   * mixes the metric library, liked (👍) questions, verified examples and
+   * schema templates; `offset` pages through it ("换一批", wrapping around).
+   * `recent` lists the latest distinct agent questions (paged by `recentLimit`).
+   */
+  async askSuggestions({ datasourceId, locale = 'zh', offset = 0, pageSize = ASK_PAGE, recentLimit = 8 } = {}) {
     const lang = locale === 'en' ? 'en' : 'zh'
     const ds = this.requireDatasource(datasourceId ?? this.state.current)
-    const examples = []
-    const add = (q) => { const s = String(q ?? '').trim(); if (s && !examples.includes(s)) examples.push(s) }
-    metricExamples(this.knowledgeFor(ds.id).metrics, lang).forEach(add)
-    const liked = new Set()
-    this.records.list('feedback', { ref: ds.id, limit: 50, filter: f => f.rating === 'up' && Boolean(f.question?.trim()) }).some(f => { liked.add(f.question.trim()); return liked.size >= 2 })
-    liked.forEach(add)
+    const k = this.knowledgeFor(ds.id)
+    const pool = []
+    const add = (q) => { const s = String(q ?? '').trim(); if (s && !pool.includes(s)) pool.push(s) }
+    const metricQs = metricExamples(k.metrics, lang)
+    const liked = this.records.list('feedback', { ref: ds.id, limit: 200, filter: f => f.rating === 'up' && Boolean(f.question?.trim()) }).map(f => f.question.trim())
+    const verified = [...k.examples].reverse().map(e => e.question)
     let schema
     if (ds.schemaAnalyzedAt || this.schemas.has(ds.id)) { try { schema = await this.visibleSchema(ds) } catch {} }
-    schemaExamples(schema, lang).forEach(add)
+    const schemaQs = schemaExamples(schema, lang)
+    // Interleave sources so every page is a mix: metric, liked, verified, schema, schema …
+    const sources = [metricQs, liked, lang === 'zh' ? verified : [], schemaQs]
+    const weights = [1, 1, 1, 2]
+    for (let i = 0; sources.some(src => src.length); i++) {
+      sources.forEach((src, j) => { for (let n = 0; n < weights[j] && src.length; n++) add(src.shift()) })
+    }
+    const size = Math.max(1, Math.min(12, Math.floor(Number(pageSize) || ASK_PAGE)))
+    const total = pool.length
+    const start = total ? ((Math.floor(Number(offset) || 0) % total) + total) % total : 0
+    const examples = []
+    for (let i = 0; i < Math.min(size, total); i++) examples.push(pool[(start + i) % total])
     const recent = []
     const seen = new Set()
-    this.records.list('history', { ref: ds.id, limit: 8, filter: h => {
+    const cap = Math.max(1, Math.min(50, Math.floor(Number(recentLimit) || 8)))
+    this.records.list('history', { ref: ds.id, limit: cap + 1, filter: h => {
       if (h.source !== 'agent' || !h.title) return false
       if (seen.has(h.title)) return false
       seen.add(h.title)
       return true
-    } }).forEach(h => recent.push({ at: h.at, question: h.title, sessionId: h.sessionId ?? null, resultId: h.resultId ?? null, sql: h.sql, status: h.status ?? 'ok' }))
-    return { datasourceId: ds.id, locale: lang, tableCount: schema ? schema.tables.length : null, examples: examples.slice(0, 8), recent }
+    } }).forEach(h => recent.push({ id: h.id, at: h.at, question: h.title, sessionId: h.sessionId ?? null, resultId: h.resultId ?? null, sql: h.sql, status: h.status ?? 'ok' }))
+    return {
+      datasourceId: ds.id, locale: lang, tableCount: schema ? schema.tables.length : null,
+      examples, total, offset: start, nextOffset: total ? (start + size) % total : 0, pageSize: size,
+      recent: recent.slice(0, cap), hasMoreRecent: recent.length > cap,
+    }
   },
 
   onboardingStatus() {

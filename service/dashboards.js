@@ -154,6 +154,28 @@ export const methods = {
       (!q || h.sql.toLowerCase().includes(q) || (h.title ?? '').toLowerCase().includes(q)) })
   },
 
+  /**
+   * Delete history entries: one id, a list of ids, or every entry of the same
+   * question (`title`) for a data source (used by "最近的提问" where one row
+   * stands for repeated asks of the same question).
+   */
+  async deleteHistory({ id, ids, title, datasourceId } = {}) {
+    const list = [...new Set([...(ids ?? []), ...(id ? [id] : [])].map(String))]
+    if (!list.length && !title) throw new UserError('nl2sql/invalid', '缺少要删除的历史记录')
+    let deleted = 0
+    for (const x of list) {
+      if (this.records.get('history', x)) { this.records.delete('history', x); deleted++ }
+    }
+    if (title) {
+      const same = this.records.list('history', { ref: datasourceId, limit: 100000, filter: h => h.title === title && h.source === 'agent' })
+      for (const h of same) { this.records.delete('history', h.id); deleted++ }
+    }
+    if (!deleted) throw new UserError('nl2sql/not-found', '历史记录不存在或已删除')
+    this.auditAdmin('history.delete', title ? `「${String(title).slice(0, 60)}」${deleted} 条` : `${deleted} 条`)
+    await this.save()
+    return { deleted }
+  },
+
   async clearHistory() {
     this.records.clear('history')
     await this.save()

@@ -1,6 +1,13 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'ask.shuffle': "换一批",
+      'ask.deleteRecent': "删除这条提问记录",
+      'ask.deleteRecentMsg': "将删除「{q}」的全部历史记录（不影响会话本身）。",
+      'ask.deletedN': "已删除 {n} 条记录",
+      'ask.moreRecent': "显示更多",
+      'hist.deleteOne': "删除这条记录",
+      'hist.deleted': "已删除",
       'bot.step7': '「事件与回调 → 回调配置」同样选择「使用长连接接收回调」，并添加回调「卡片回传交互（card.action.trigger）」，否则回答卡片上的「按维度拆分 / 为什么变化 / 明细 / 固定到看板」按钮点击无效。', 'bot.actionsHint': '回答卡片带有交互按钮：按维度拆分、为什么变化、明细、固定到看板（仅管理员/分析师）。点击者会按成员权限重新校验。',
       'sg.section': '建议', 'sg.hint': '根据查询历史和反馈自动整理的候选知识，确认后才会加入业务知识。', 'sg.refresh': '刷新',
       'sg.kind.example': '样例问答', 'sg.kind.metric': '指标', 'sg.kind.note': '字段备注', 'sg.kind.glossary': '业务词',
@@ -884,6 +891,13 @@
       'error.generic': '操作失败：{message}',
     }
     const en = {
+      'ask.shuffle': "Shuffle",
+      'ask.deleteRecent': "Delete this question from history",
+      'ask.deleteRecentMsg': "All history entries of \"{q}\" will be deleted (the conversation itself is kept).",
+      'ask.deletedN': "Deleted {n} entries",
+      'ask.moreRecent': "Show more",
+      'hist.deleteOne': "Delete this entry",
+      'hist.deleted': "Deleted",
       'bot.step7': 'In Events & Callbacks → Callback configuration, also choose the persistent connection and add the callback "card.action.trigger" (card interaction); otherwise the Breakdown / Why / Details / Pin buttons on answer cards do nothing.', 'bot.actionsHint': 'Answer cards have buttons: breakdown by dimension, why it changed, details, pin to dashboard (admins/analysts only). The clicking member\'s permissions are re-checked.',
       'sg.section': 'Suggestions', 'sg.hint': 'Candidate knowledge mined from query history and feedback. Nothing is added until you accept it.', 'sg.refresh': 'Refresh',
       'sg.kind.example': 'Examples', 'sg.kind.metric': 'Metrics', 'sg.kind.note': 'Column notes', 'sg.kind.glossary': 'Terms',

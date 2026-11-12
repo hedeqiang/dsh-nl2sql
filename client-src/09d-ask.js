@@ -39,9 +39,23 @@
       const [result, setResult] = useState(null)
       const [plan, setPlan] = useState(null)
       const [error, setError] = useState(null)
-      const sugg = useAsync(() => (ds ? call('askSuggestions', { datasourceId: ds.id, locale: uiLang }).catch(() => null) : null), [ds?.id, ds?.schemaAnalyzedAt, uiLang])
-      const examples = sugg.value?.examples?.length ? sugg.value.examples.slice(0, 6) : [t('ask.ex.tables'), t('ask.ex.biggest')]
-      const recent = sugg.value?.recent ?? []
+      const [exOffset, setExOffset] = useState(0)
+      const [recentLimit, setRecentLimit] = useState(8)
+      const [hiddenRecent, setHiddenRecent] = useState(() => new Set())
+      useEffect(() => { setExOffset(0); setRecentLimit(8) }, [ds?.id])
+      const sugg = useAsync(() => (ds ? call('askSuggestions', { datasourceId: ds.id, locale: uiLang, offset: exOffset, pageSize: 6, recentLimit }).catch(() => null) : null), [ds?.id, ds?.schemaAnalyzedAt, uiLang, exOffset, recentLimit])
+      // Keep the previous page on screen while the next one loads (no flicker on 换一批).
+      const [shown, setShown] = useState(null)
+      useEffect(() => { if (sugg.value) { setShown(sugg.value); setHiddenRecent(new Set()) } }, [sugg.value])
+      const data = sugg.value ?? shown
+      const examples = data?.examples?.length ? data.examples : [t('ask.ex.tables'), t('ask.ex.biggest')]
+      const canShuffle = (data?.total ?? 0) > (data?.pageSize ?? 6)
+      const recent = (data?.recent ?? []).filter(r => !hiddenRecent.has(r.question))
+      const removeRecent = async (r) => {
+        if (!await confirmDialog({ title: t('ask.deleteRecent'), message: fmt(t, 'ask.deleteRecentMsg', { q: r.question }), confirmLabel: t('ds.delete'), danger: true })) return
+        setHiddenRecent(x => new Set(x).add(r.question))
+        try { const res = await call('deleteHistory', { title: r.question, datasourceId: ds.id }); notify(fmt(t, 'ask.deletedN', { n: res.deleted }), 'ok') } catch (e) { notifyError(e); setHiddenRecent(x => { const n = new Set(x); n.delete(r.question); return n }) }
+      }
       const run = async (confirmScan = false) => {
         setRunning(true); setError(null)
         try {
@@ -78,8 +92,10 @@
             h('span', { className: 'n2s-grow n2s-show-narrow' }),
             h('button', { type: 'button', className: 'n2s-btn primary', disabled: !question.trim() || !presetReady || !ds, onClick: submit }, t('ask.start'), Icon.arrow(14)))),
         uploading && h(UploadDialog, { t, datasources, onClose: () => setUploading(false), onDone: async (res) => { await call('setCurrent', { id: res.datasourceId }).catch(() => {}); await refreshDatasources(); notify(t('up.askHint'), 'ok', 5000) } }),
-        h('div', { className: 'n2s-sectlabel' }, t('ask.try')),
-        sugg.loading && !sugg.value ? h('div', { className: 'n2s-examples' }, [0, 1, 2, 3].map(i => h('div', { key: i, className: 'n2s-skel', style: { height: 44 } }))) :
+        h('div', { className: 'n2s-sectlabel' }, t('ask.try'), h('span', { className: 'n2s-grow' }),
+          canShuffle && h('button', { type: 'button', className: 'n2s-link n2s-small n2s-shuffle', disabled: sugg.loading, 'aria-label': t('ask.shuffle'), onClick: () => setExOffset(data?.nextOffset ?? 0) },
+            h('span', { className: sugg.loading ? 'n2s-spinning' : undefined, 'aria-hidden': true }, Icon.refresh(12)), t('ask.shuffle'))),
+        !data && sugg.loading ? h('div', { className: 'n2s-examples' }, [0, 1, 2, 3].map(i => h('div', { key: i, className: 'n2s-skel', style: { height: 44 } }))) :
           h('div', { className: 'n2s-examples' }, examples.map(q => h('button', { key: q, type: 'button', className: 'n2s-example', disabled: !ds, onClick: () => onAsk(q) }, h('span', { className: 'n2s-ico' }, Icon.spark(14)), h('span', null, q)))),
         recent.length > 0 && h(React.Fragment, null,
           h('div', { className: 'n2s-sectlabel' }, t('ask.recent'), h('span', { className: 'n2s-grow' }), h('button', { type: 'button', className: 'n2s-link n2s-small', onClick: () => onNavigate({ tab: 'history' }) }, t('ask.allHistory'))),
@@ -88,7 +104,9 @@
             h('span', { className: 'n2s-grow n2s-ellipsis', title: r.question }, r.question),
             h('span', { className: 'n2s-faint n2s-small n2s-hide-narrow' }, relTime(t, r.at)),
             r.sessionId && h('button', { type: 'button', className: 'n2s-btn small ghost', onClick: () => fbCtx.openSession?.(r.sessionId) }, t('ask.openSession')),
-            h('button', { type: 'button', className: 'n2s-btn small ghost', disabled: !ds, onClick: () => onAsk(r.question) }, t('ask.askAgain')))))),
+            h('button', { type: 'button', className: 'n2s-btn small ghost', disabled: !ds, onClick: () => onAsk(r.question) }, t('ask.askAgain')),
+            h('button', { type: 'button', className: 'n2s-iconbtn n2s-recent-del', title: t('ask.deleteRecent'), 'aria-label': `${t('ask.deleteRecent')}: ${r.question}`, onClick: () => removeRecent(r) }, Icon.trash(13))))),
+          data?.hasMoreRecent && h('button', { type: 'button', className: 'n2s-morebtn', disabled: sugg.loading, onClick: () => setRecentLimit(n => Math.min(50, n + 10)) }, sugg.loading ? h('span', { className: 'n2s-spin' }) : null, t('ask.moreRecent'))),
         h('div', { className: 'n2s-collapse' },
           h('button', { type: 'button', 'aria-expanded': sqlOpen, onClick: () => setSqlOpen(v => !v) }, Icon.code(14), t('ask.sql'), Icon.chev(11)),
           sqlOpen && h('div', null,
