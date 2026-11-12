@@ -1,6 +1,6 @@
 {
   "name": "@hedeqiang/dsh-nl2sql",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Data Q&A (NL2SQL) for DeepSeek Harness: ask MySQL / PostgreSQL / Elasticsearch / CSV in plain language, charts, dashboards, alerts, IM push and bots (Lark/Feishu, Telegram, WeCom, DingTalk), access control.",
   "type": "module",
   "exports": {

@@ -12,6 +12,6 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       # The full suite needs the Harness runtime and databases; CI runs the
       # portable checks: syntax, client bundle up to date, unit tests.
-      - run: for f in index.js service/*.js *.js lib/client.js; do node --check "$f"; done
+      - run: for f in index.js service/*.js channels/*.js *.js lib/client.js; do node --check "$f"; done
       - run: node scripts/build-client.mjs --check
       - run: node test/run.mjs --fast

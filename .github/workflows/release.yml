@@ -1,0 +1,77 @@
+# Publish to npm when a version tag (v1.2.3) is pushed.
+#
+# Uses npm trusted publishing (OIDC): no NPM_TOKEN secret. One-time setup on
+# npmjs.com → @hedeqiang/dsh-nl2sql → Settings → Trusted Publisher → GitHub Actions:
+#   user hedeqiang · repository dsh-nl2sql · workflow release.yml · allow npm publish
+# (or: npm trust github @hedeqiang/dsh-nl2sql --repo hedeqiang/dsh-nl2sql --file release.yml --allow-publish)
+#
+# Release: bump "version" in package.json, update CHANGELOG.md, commit, then
+#   git tag v$(node -p "require('./package.json').version") && git push origin main --tags
+name: release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Pack and verify only, do not publish
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # create the GitHub release
+  id-token: write   # OIDC token for npm trusted publishing (+ provenance)
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm >= 11.5.1.
+      - run: npm install -g npm@^11.5.1 && npm --version
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Tag matches package.json version
+        if: github.event_name == 'push'
+        run: |
+          v=$(node -p "require('./package.json').version")
+          test "v$v" = "${GITHUB_REF_NAME}" || { echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version $v"; exit 1; }
+
+      - name: Checks
+        run: |
+          for f in index.js service/*.js channels/*.js *.js lib/client.js; do node --check "$f"; done
+          node scripts/build-client.mjs --check
+          node test/run.mjs --fast
+
+      - name: Pack
+        run: |
+          npm pack --json > pack.json
+          node -e "const p=require('./pack.json')[0]; console.log(p.filename, p.entryCount + ' files', p.size + ' bytes'); for (const need of ['index.js','lib/client.js','cordis.patch.yml','channels/index.js','locale/zh.json']) if (!p.files.some(f=>f.path===need)) { console.error('missing in package: '+need); process.exit(1) }"
+
+      - name: Publish to npm
+        if: github.event_name == 'push' || inputs.dry-run == false
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "@hedeqiang/dsh-nl2sql@$v" version >/dev/null 2>&1; then echo "::notice::$v already on npm, skipping"; exit 0; fi
+          tag=latest; case "$v" in *-*) tag=next;; esac
+          npm publish --provenance --access public --tag "$tag"
+
+      - name: GitHub release
+        if: github.event_name == 'push'
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          # Release notes: the CHANGELOG section of this version.
+          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {if (on) exit} on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md" > notes.md
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" *.tgz --title "$GITHUB_REF_NAME" --notes-file notes.md
