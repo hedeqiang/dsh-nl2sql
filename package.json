@@ -1,7 +1,6 @@
 {
-  "name": "@local/dsh-nl2sql",
-  "version": "0.9.0",
-  "private": true,
+  "name": "@hedeqiang/dsh-nl2sql",
+  "version": "0.10.0",
   "description": "Data Q&A (NL2SQL) for DeepSeek Harness: ask MySQL / PostgreSQL / Elasticsearch / CSV in plain language, charts, dashboards, alerts, Lark push and bot, access control.",
   "type": "module",
   "exports": {
@@ -27,7 +26,11 @@
     "lib/client.echarts.js",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "dependencies": {
     "@larksuiteoapi/node-sdk": "1.76.0",
@@ -78,5 +81,12 @@
   ],
   "engines": {
     "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hedeqiang/dsh-nl2sql.git"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

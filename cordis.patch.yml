@@ -3,7 +3,7 @@
 # page uses for its conversations.
 - insert:
     - id: nl2sql
-      name: '@local/dsh-nl2sql'
+      name: '@hedeqiang/dsh-nl2sql'
     - id: preset-nl2sql
       name: '@deepseek-ai/dsh-agent-preset'
       config:
