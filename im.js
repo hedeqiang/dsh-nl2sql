@@ -1,5 +1,5 @@
 /**
- * Compatibility shim: IM delivery moved to channels/ (see docs/CHANNELS.md).
+ * Compatibility shim: IM delivery moved to channels/ (see docs/channels.md).
  * Platform-neutral helpers live in channels/message.js, Lark cards and push in
  * channels/lark.js. `ImError` is the generic ChannelError.
  */

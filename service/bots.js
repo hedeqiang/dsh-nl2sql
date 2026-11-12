@@ -1,5 +1,5 @@
 /**
- * Nl2SqlService methods: inbound IM bots (see docs/CHANNELS.md).
+ * Nl2SqlService methods: inbound IM bots (see docs/channels.md).
  * Mixed into the service prototype by index.js; `this` is the service.
  *
  * Every channel whose kind has `capabilities.bot` may carry

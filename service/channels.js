@@ -1,5 +1,5 @@
 /**
- * Nl2SqlService methods: IM channels (see docs/CHANNELS.md).
+ * Nl2SqlService methods: IM channels (see docs/channels.md).
  * Mixed into the service prototype by index.js; `this` is the service.
  *
  * A channel record (state.channels[]):

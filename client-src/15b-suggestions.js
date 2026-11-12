@@ -17,7 +17,7 @@
       if (s.kind === 'example') return h('pre', { className: 'n2s-code', style: { marginTop: 6, maxHeight: 140 } }, prettySql(it.sql ?? ''))
       if (s.kind === 'metric') return h('div', null,
         h('div', { className: 'n2s-mono n2s-small' }, `${it.expression}${it.table ? ` FROM ${it.table}` : ''}${it.filter ? ` WHERE ${it.filter}` : ''}`),
-        (it.timeColumn || it.dimensions?.length) && h('div', { className: 'n2s-muted n2s-small' }, [it.timeColumn && `${t('kb.timeColumn')}: ${it.timeColumn}`, it.dimensions?.length && `${t('kb.dimensions')}: ${it.dimensions.join('、')}`].filter(Boolean).join(' · ')))
+        (it.timeColumn || it.dimensions?.length) && h('div', { className: 'n2s-muted n2s-small' }, [it.timeColumn && `${t('kb.timeColumn')}: ${it.timeColumn}`, it.dimensions?.length && `${t('kb.dimensions')}: ${it.dimensions.join(uiLang === 'zh' ? '、' : ', ')}`].filter(Boolean).join(' · ')))
       if (s.kind === 'note') return h('div', { className: 'n2s-small' }, it.text)
       return h('div', null, h('div', { className: 'n2s-small' }, it.definition), it.sql && h('code', { className: 'n2s-md-code', style: { display: 'inline-block', marginTop: 4 } }, it.sql))
     }

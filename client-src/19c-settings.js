@@ -248,7 +248,7 @@
             h('table', { className: 'n2s-table' }, h('thead', null, h('tr', null, [t('set.section'), t('set.toAdd'), t('set.toUpdate'), t('set.note')].map((x, i) => h('th', { key: i }, x)))),
               h('tbody', null, Object.entries(importState.dry?.report ?? {}).map(([k, r]) => h('tr', { key: k },
                 h('td', null, t(`set.sec.${k}`)), h('td', null, r.add ?? r.added ?? 0), h('td', null, r.update ?? r.updated ?? 0),
-                h('td', { className: 'n2s-muted n2s-small', style: { whiteSpace: 'normal' } }, [r.needsSecret?.length ? fmt(t, 'set.needsSecret', { names: r.needsSecret.join('、') }) : '', r.paused ? t('set.reportsPaused') : '', r.skipped ? fmt(t, 'set.skipped', { n: r.skipped }) : ''].filter(Boolean).join('；')))))),
+                h('td', { className: 'n2s-muted n2s-small', style: { whiteSpace: 'normal' } }, [r.needsSecret?.length ? fmt(t, 'set.needsSecret', { names: r.needsSecret.join(uiLang === 'zh' ? '、' : ', ') }) : '', r.paused ? t('set.reportsPaused') : '', r.skipped ? fmt(t, 'set.skipped', { n: r.skipped }) : ''].filter(Boolean).join('；')))))),
             h('div', { className: 'n2s-row', style: { marginTop: 14, justifyContent: 'flex-end' } },
               h('button', { type: 'button', className: 'n2s-btn ghost', onClick: () => setImportState(null) }, t('ds.cancel')),
               h('button', { type: 'button', className: 'n2s-btn danger', onClick: () => doImport('replace') }, t('kb.replace')),
@@ -264,6 +264,6 @@
         row('dataDir', v?.dataDir, true),
         row('runtime', v ? `Node ${v.nodeVersion} · SQLite ${v.sqliteVersion}` : null),
         row('tests', v?.testsCommand, true),
-        row('docs', 'DEVELOPMENT.md'))))
+        row('docs', 'github.com/hedeqiang/dsh-nl2sql'))))
     }
 

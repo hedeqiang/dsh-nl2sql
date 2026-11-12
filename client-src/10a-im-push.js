@@ -16,7 +16,7 @@
 
     // ------------------------------------------- channels: catalog & shapes
     // The host may be older (flat Lark-only channels, no channelCatalog /
-    // botStatus RPCs) or newer (docs/CHANNELS.md). Everything below normalizes
+    // botStatus RPCs) or newer (docs/channels.md). Everything below normalizes
     // both so the pages only deal with { platform, type, config, secretsSet,
     // capabilities, bot }.
 

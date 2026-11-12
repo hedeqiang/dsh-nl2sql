@@ -1,6 +1,6 @@
 /**
  * Compatibility shim: the Lark long connection and OpenAPI helpers moved to
- * channels/lark.js (see docs/CHANNELS.md).
+ * channels/lark.js (see docs/channels.md).
  */
 export {
   addReaction, clearTenantTokenCache, createDedupe, createLarkBot, getBotInfo, getChatInfo, getTenantToken, getUserInfo,

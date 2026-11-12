@@ -99,7 +99,7 @@ export const methods = {
   /**
    * Members: people and group chats on IM platforms, each with a role
    * (admin | analyst | viewer), a data source scope and platform-scoped
-   * identities [{ platform, id, email? }] (see docs/CHANNELS.md). The local
+   * identities [{ platform, id, email? }] (see docs/channels.md). The local
    * owner is implicit. Bot messages from unknown people fall back to
    * settings.botDefaultRole (none = refuse).
    */

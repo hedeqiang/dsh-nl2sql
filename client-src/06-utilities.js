@@ -9,6 +9,10 @@
     /** Current UI language ('zh' | 'en'), updated by the page/tool views on render. */
     let uiLang = 'zh'
     // LocaleSnapshot is { active, locales, revision } (dsh-client-locale); older hosts passed a string.
+    /** Join a list for display in the UI language: 「a、b」 / "a, b". */
+    const joinList = (items, sep) => (items ?? []).filter(x => x !== undefined && x !== null && x !== '').join(sep ?? (uiLang === 'zh' ? '、' : ', '))
+    /** Label + colon in the UI language: 「标签：」 / "Label: ". */
+    const colon = (label) => (uiLang === 'zh' ? `${label}：` : `${label}: `)
     const setUiLang = (snapshot) => {
       const id = typeof snapshot === 'string' ? snapshot : (snapshot?.active ?? snapshot?.locale ?? 'zh')
       uiLang = /^zh/i.test(String(id)) ? 'zh' : 'en'

@@ -1,109 +1,175 @@
-# dsh-nl2sql · 数据问答
+<div align="center">
 
-[DeepSeek Harness](https://github.com/deepseek-ai) 的企业级 NL2SQL 插件：连接数据库，用自然语言提问，Agent 写只读 SQL、执行并在对话中画图；结果可以固定到看板、推送到飞书 / Telegram / 企业微信 / 钉钉，还能在群里直接 @机器人提问。
+# dsh-nl2sql
 
-[English](README.en.md)
+**Ask your databases in plain language — inside [DeepSeek Harness](https://github.com/deepseek-ai).**
 
-## 功能
+The agent writes read-only SQL, runs it and charts the answer in the conversation.<br>
+Pin results to dashboards, schedule reports and alerts, and push them to Lark / Feishu, Telegram, WeCom or DingTalk — or let teammates @-mention a bot in their group chat.
 
-**问答与分析**
-- 数据源：MySQL 5.7+、PostgreSQL、Elasticsearch（SQL），支持 SSH 隧道；也可以上传 CSV / Excel（存为本机 SQLite）。
-- 表结构分析：识别表的角色、字段语义（时间 / 度量 / 枚举 / 敏感）、推断表间关系，提供关系图。
-- 自然语言提问：在 Harness 对话中进行，Agent 使用 `nl2sql_*` 工具查询，结果在对话中渲染为 ECharts 图表或表格。
-- 下钻与归因：按维度拆分、查看明细、「为什么变化」——比较两个时段并按维度贡献排序。
-- 指标库与业务知识：词表、指标口径（Agent 用 `nl2sql_metric` 按口径查询）、字段备注、样例问答；支持导入导出。
-- 准确率评测：用样例问答作为评测集，Agent 从零作答后与样例结果比对。
+[![npm](https://img.shields.io/npm/v/@hedeqiang/dsh-nl2sql?color=3370ff)](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql)
+[![check](https://github.com/hedeqiang/dsh-nl2sql/actions/workflows/check.yml/badge.svg)](https://github.com/hedeqiang/dsh-nl2sql/actions/workflows/check.yml)
+[![license](https://img.shields.io/npm/l/@hedeqiang/dsh-nl2sql)](LICENSE)
 
-**看板与推送**
-- 多看板、全局筛选（时间范围 / 维度）、拖拽排序、三档宽度、快照、Excel 导出。
-- 一个看板可以放多个数据源的图表：每个图表标注所属数据源，可切换「全部数据源 / 仅当前数据源」。
-- 推送大结果时注明「共 N 行，显示前 M 行」；飞书应用机器人和 Telegram 会附带完整数据 Excel。
-- IM 渠道：飞书 / Lark、Telegram、企业微信、钉钉（推送 Markdown 与结果，图表按平台能力用原生图表、图片或表格）；架构见 [docs/CHANNELS.md](docs/CHANNELS.md)，新增平台只需实现一个适配器。
-- 定时报告（基于 Harness 定时任务）、指标告警（阈值 / 环比 / 异常 / 无数据）、表结构变更检测。
-- 群聊 @机器人提问：飞书长连接、Telegram 长轮询、企业微信智能机器人长连接、钉钉 Stream 模式，都不需要公网地址。
+English · [简体中文](README.zh-CN.md)
 
-**安全与治理**
-- 只读执行：按方言词法检查语句（MySQL / PostgreSQL / SQLite / ES），只读事务，PostgreSQL 使用扩展协议拒绝多语句，服务端超时，大结果流式截断。
-- 访问控制：按表允许 / 排除、隐藏列、脱敏列；大表全表扫描保护。
-- 成员与权限：飞书用户 / 群的数据源范围、只读角色（只能用指标库、已验证样例和看板）、行级权限（自动注入过滤，无法安全改写的查询直接拒绝）。
-- 隐私：可设置发给模型的内容（不发 / 统计摘要 / 前 N 行），敏感字段默认脱敏；审计记录归属到具体的人。
+</div>
 
-## 安装
+![Dashboard with charts from two data sources](docs/images/dashboard.png)
 
-需要 DeepSeek Harness 0.2 及以上（桌面版或 `dsh web`）。插件已发布到 npm：[`@hedeqiang/dsh-nl2sql`](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql)。
+## Contents
 
-[![npm](https://img.shields.io/npm/v/@hedeqiang/dsh-nl2sql)](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [IM channels and bots](#im-channels-and-bots)
+- [Security model](#security-model)
+- [Data and privacy](#data-and-privacy)
+- [Limitations](#limitations)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
-**方式一：在 Harness 里添加（推荐）**
+## Features
 
-1. 打开左侧栏 **插件** → **添加插件**。
-2. 输入包名 `@hedeqiang/dsh-nl2sql`（可加版本，如 `@hedeqiang/dsh-nl2sql@0.11.1`），确认安装并启用。
-3. 左侧栏出现 **数据问答**，新建对话时也可以选择「数据问答」预设。
+**Ask and analyze**
+- Data sources: MySQL 5.7+, PostgreSQL, Elasticsearch (SQL), optionally through an SSH tunnel, and CSV / Excel uploads stored as local SQLite.
+- Schema analysis: table roles, column semantics (time / measure / enum / sensitive), inferred relations and an ER graph.
+- Natural-language questions in any Harness conversation through the `nl2sql_*` agent tools; results render as interactive ECharts charts or tables.
+- Drill-down: split by a dimension, show the rows behind a point, and *why did it change* — rank dimensions by their contribution between two periods.
+- Business knowledge: glossary, governed metrics (queried with `nl2sql_metric`), column notes and verified question → SQL examples, with import / export and suggestions mined from history and feedback.
+- Accuracy evaluation: replay the verified examples, or let the agent answer them from scratch and compare results.
 
-也可以直接对 Harness 的 Agent 说：「安装插件 @hedeqiang/dsh-nl2sql」。
+**Share and automate**
+- Multiple dashboards with global filters, drag-to-reorder, three widths, snapshots and Excel export. A dashboard may mix data sources; every chart shows where it comes from.
+- Scheduled reports, metric alerts (threshold / change / anomaly / missing data) and schema change detection.
+- Push to Lark / Feishu, Telegram, WeCom and DingTalk; charts are sent as native card charts, images or tables depending on the platform, and large results come with the full data as an Excel attachment where the platform allows files.
+- Chat bots that answer @-mentions in group chats without a public URL (Lark long connection, Telegram long polling, WeCom AI bot long connection, DingTalk Stream mode).
 
-**方式二：命令行**
+**Govern**
+- Read-only by construction, table / column access policies with masking, and a full-scan guard.
+- Members with roles (admin / analyst / viewer), data source scopes and row-level rules for people and group chats on every IM platform.
+- Audit history attributed to people, and a setting for exactly what query data the model may see.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/schema.png" alt="Schema analysis with column roles"></td>
+<td width="50%"><img src="docs/images/channels.png" alt="IM channels grouped by platform"></td>
+</tr>
+<tr>
+<td align="center"><sub>Schema analysis</sub></td>
+<td align="center"><sub>IM channels</sub></td>
+</tr>
+</table>
+
+## Requirements
+
+- [DeepSeek Harness](https://github.com/deepseek-ai) 0.2 or later — the desktop app or `dsh web`.
+- Network access from the Harness machine to your databases (directly or through SSH).
+- A **read-only database account** is strongly recommended (see [Security model](#security-model)).
+
+## Installation
+
+**From the Harness UI (recommended)**
+
+1. Open **Plugins** in the sidebar and choose **Add plugin**.
+2. Enter `@hedeqiang/dsh-nl2sql` (optionally pinned, e.g. `@hedeqiang/dsh-nl2sql@0.11.2`), then install and enable it.
+3. **Data Q&A** appears in the sidebar, and a *Data Q&A* agent preset is available for new conversations.
+
+You can also simply ask the Harness agent: *"install the plugin @hedeqiang/dsh-nl2sql"*.
+
+**From the command line**
 
 ```bash
-dsh plugin --profile desktop add @hedeqiang/dsh-nl2sql   # 桌面版的 profile 名为 desktop；dsh web 默认为 web
+dsh plugin --profile desktop add @hedeqiang/dsh-nl2sql   # the desktop app uses the "desktop" profile; dsh web uses "web"
 ```
 
-然后在 **插件** 页启用它（或重启 Harness）。
+Then enable it on the **Plugins** page, or restart Harness.
 
-**升级**：在 **插件** 页的插件详情中更新，或执行 `dsh plugin --profile desktop update @hedeqiang/dsh-nl2sql`，然后重新启用插件。配置和数据保存在 `~/.dsh/nl2sql`，升级不会丢失；旧版本的配置会在首次加载时自动迁移。
-
-**卸载**：在 **插件** 页移除，或 `dsh plugin --profile desktop remove @hedeqiang/dsh-nl2sql`。卸载不会删除 `~/.dsh/nl2sql` 中的数据；不再需要时可手动删除该目录，数据库密码等凭据在 Harness 凭据库中，可在设置中清除。
-
-> 依赖（mysql2、pg、ssh2、echarts、@resvg/resvg-js、@larksuiteoapi/node-sdk）都使用预编译包，安装时不需要运行构建脚本。
-
-**从源码安装（开发）**
+**Upgrade and uninstall**
 
 ```bash
-git clone https://github.com/hedeqiang/dsh-nl2sql.git && cd dsh-nl2sql
-pnpm install --ignore-scripts
+dsh plugin --profile desktop update @hedeqiang/dsh-nl2sql
+dsh plugin --profile desktop remove @hedeqiang/dsh-nl2sql
 ```
 
-在 **插件** → **添加插件** 中填入本目录的绝对路径（以链接方式安装，改代码后重新启用插件即可生效），或让 Agent 用插件管理器安装该目录。
+Configuration and data live in `~/.dsh/nl2sql` and survive upgrades and uninstalls; older configuration is migrated automatically on first load. Delete the directory yourself if you no longer need it.
 
-## 使用
+All dependencies ship prebuilt binaries, so no install scripts need to run.
 
-1. 左侧栏打开「数据问答」→「管理 → 数据源」，添加数据库（建议使用只读账号）或上传文件。
-2. 「表结构」→ 分析表结构。
-3. 「问答」页提问，或在任意对话中选择「数据问答」预设直接提问。
-4. 把满意的图表固定到「看板」；在「业务知识」补充词表、指标和样例，提高准确率。
-5. 「管理 → 推送渠道」添加飞书机器人；「告警与报告」配置自动任务；「成员与权限」开通飞书群提问。
+## Quick start
 
-飞书应用机器人所需权限与长连接配置步骤见页面「成员与权限 → 飞书机器人 → 飞书开放平台配置步骤」。
+1. **Data Q&A → Manage → Data sources** — add a database, or upload a CSV / Excel file.
+2. **Schema** — run the analysis (it reads metadata and a small sample of enum values, never full tables).
+3. **Ask** — type a question, e.g. *"daily orders and revenue over the last 30 days"*. The agent picks tables, writes SQL for your dialect, runs it and draws a chart. You can also choose the *Data Q&A* preset in any conversation.
+4. **Dashboard** — pin useful charts, add filters, export or send them.
+5. **Knowledge** — add glossary terms, metric definitions and verified examples to make answers consistent; run an evaluation to measure accuracy.
 
-## 数据与隐私
+## IM channels and bots
 
-| 内容 | 位置 |
+Every platform is an adapter under [`channels/`](channels); the core only talks to the adapter interface described in [docs/channels.md](docs/channels.md).
+
+| Platform | Push | Charts | Buttons | Bot without public URL |
+|---|---|---|---|---|
+| Lark / Feishu — group webhook | ✓ | native card charts | – | – |
+| Lark / Feishu — app bot | ✓ (+ Excel attachment) | native charts or images | ✓ | ✓ long connection |
+| Telegram | ✓ (+ Excel attachment) | images | ✓ inline keyboard | ✓ long polling |
+| WeCom — group webhook | ✓ | images | – | – |
+| WeCom — AI bot | ✓ (chats that messaged the bot) | tables | – | ✓ long connection |
+| DingTalk — custom robot | ✓ (optional signing) | tables | – | – |
+| DingTalk — internal app robot | ✓ | tables | – | ✓ Stream mode |
+
+Add a channel in **Manage → Channels**: pick the platform and connection type, and the form shows the console steps for that platform. People and groups are granted access in **Manage → Members & access**; anyone who has talked to a bot can be added with one click.
+
+In a group chat, members @-mention the bot and ask. The bot knows which data sources the member may use and picks the matching one. Chat commands: `help`, `数据源` (list sources), `切换 <name>` (pin a source), `自动` (pick automatically again), `新对话` / `reset` (new conversation).
+
+> The Telegram, WeCom and DingTalk adapters are tested against local fakes of their APIs and have not yet been verified with real accounts; Lark has been used with real workspaces. Reports from real deployments are welcome.
+
+## Security model
+
+- **Read-only queries.** Every statement passes a per-dialect lexer (MySQL, PostgreSQL, SQLite, Elasticsearch SQL) that admits only `SELECT` / `SHOW` / `DESCRIBE` / `EXPLAIN`; queries run in read-only transactions with server-side timeouts, PostgreSQL uses the extended protocol (no multi-statement strings), and large results are streamed and truncated.
+- **Access policies.** Allow or deny tables, hide or mask columns, and refuse full scans of large tables unless confirmed.
+- **Members.** Data source scopes, a viewer role (metric library, verified examples and dashboards only) and row-level rules that are injected into queries — queries that cannot be rewritten safely are refused.
+- **Bot actions.** Buttons on IM messages carry opaque tokens only; every click is re-authorized for the person who clicked.
+
+The lexer is a first line of defence, not a substitute for database permissions: **always connect with a read-only account.** See [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## Data and privacy
+
+| What | Where |
 |---|---|
-| 配置（数据源、看板、知识、告警、成员、设置） | `~/.dsh/nl2sql/state.json` |
-| 查询结果、缓存、快照、日志（历史 / 审计 / 反馈 / 推送 / 告警） | `~/.dsh/nl2sql/results.sqlite` |
-| 上传的文件 | `~/.dsh/nl2sql/files/` |
-| 数据库密码、飞书密钥 | Harness 凭据库 |
+| Configuration (data sources, dashboards, knowledge, alerts, members, channels, settings) | `~/.dsh/nl2sql/state.json` |
+| Query results, cache, snapshots and logs (history, audit, feedback, deliveries, alerts) | `~/.dsh/nl2sql/results.sqlite` |
+| Uploaded files | `~/.dsh/nl2sql/files/` |
+| Database passwords, SSH keys, bot secrets | the Harness credential store |
 
-发给模型的内容由「设置 → 模型可见数据」决定：默认只发表结构、枚举字段取值和查询结果的统计摘要，不发明细行。推送到飞书的内容会离开本机。
+**Settings → Data shown to the model** controls what query data reaches the LLM: nothing, per-column statistics (default) or the first *N* rows. Sensitive columns are masked by default. Anything you push to an IM platform leaves your machine.
 
-## 开发
+## Limitations
+
+- Alerts and the daily schema check run inside the Harness process: nothing is checked while Harness is closed; one catch-up run happens after it starts.
+- The local page has owner rights and no login; do not expose the Harness web port to untrusted networks.
+- Row-level rules apply to IM members; queries with subqueries, CTEs or `UNION` are refused under row-level rules.
+- Legacy `.xls` files are not supported (use `.xlsx` or CSV).
+
+## Development
 
 ```bash
-npm test                      # 全部测试（需要 Harness 桌面版作为 Node 运行时；本机 MySQL / PostgreSQL 可选，不可用时跳过）
-npm test -- --fast            # 仅单元测试和界面测试
-node scripts/build-client.mjs # 修改 client-src/ 后生成 lib/client.js
-node scripts/build-echarts.mjs
+git clone https://github.com/hedeqiang/dsh-nl2sql.git
+cd dsh-nl2sql
+pnpm install --ignore-scripts
+npm test                        # full suite; local MySQL / PostgreSQL are used when available
+npm run test:fast               # unit + UI tests only
+node scripts/build-client.mjs   # regenerate lib/client.js after editing client-src/
 ```
 
-目录结构与约定见 [DEVELOPMENT.md](DEVELOPMENT.md)；隔离的准确率评测环境见 [eval/README.md](eval/README.md)。
+Install your checkout as a linked plugin with **Plugins → Add plugin** and the absolute directory path; re-enable the plugin to load changes. Project layout, conventions and test setup are in [docs/development.md](docs/development.md); an isolated accuracy benchmark lives in [eval/](eval/README.md).
 
-## 已知限制
+## Contributing
 
-- 告警和每日表结构检查在 Harness 进程内调度：Harness 关闭期间不检查，重新打开后补查一次。
-- 行级权限只对飞书成员生效；本机页面始终是所有者权限，没有登录机制。
-- 行级权限下不支持子查询、CTE、UNION（会被拒绝）。
-- 不支持旧版 `.xls`。
+Issues and pull requests are welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
-## 许可证
+## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © hedeqiang

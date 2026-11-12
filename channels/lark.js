@@ -1,5 +1,5 @@
 /**
- * Lark / Feishu channel adapter (see docs/CHANNELS.md).
+ * Lark / Feishu channel adapter (see docs/channels.md).
  *
  * Kinds:
  *   - lark_webhook: a group custom bot (webhook URL + optional signing secret).

@@ -1,65 +1,87 @@
-# 更新日志
+# Changelog
 
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+All notable changes to this project are documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [未发布]
+## [Unreleased]
 
-### 改进
-- 添加成员不用再查 ID：和机器人说过话的人、机器人所在的群会列在成员表单里，点一下自动填入账号 ID、名称和邮箱；因未开通被拒绝的人或群会在「成员与权限」顶部提示，点击即可添加。
-- 群里 @机器人 时知道有哪些数据源：提示中列出该成员可用的全部数据源（类型、库名、说明、主要表），Agent 先判断问题属于哪个数据源再切换查询，并在回答开头注明；问题里提到数据源名称或命中某个数据源的业务知识时自动选中它。
-- 机器人命令：「数据源」列出可用数据源及说明；「切换 <名称>」支持模糊匹配并固定数据源；新增「自动」恢复按问题自动选择；回答卡片底部显示实际使用的数据源。
+## [0.12.0] - 2026-11-12
+
+### Added
+- One-click member adding: people and groups that talked to a bot, and the groups a bot is in, are offered in the member form with their ids, names and emails filled in. People and groups refused because they are not members yet are listed at the top of **Members & access**.
+- Bots know the member's data sources: every question carries a catalog of the sources the member may use (type, database, description, main tables); the agent switches to the matching source and states which one it used. A source named in the question, or one whose business knowledge matches, is selected automatically.
+- Bot commands: `数据源` lists sources with descriptions, `切换 <name>` pins a source (fuzzy match), `自动` returns to automatic selection. The reply footer shows the source actually used.
+
+### Changed
+- README rewritten in English (Chinese in `README.zh-CN.md`) with screenshots, security model and installation from npm; added a Code of Conduct, issue and pull request templates, and an English development guide (`docs/development.md`). `docs/CHANNELS.md` moved to `docs/channels.md`.
+- List separators and label colons in the page follow the UI language.
 
 ## [0.11.2] - 2026-11-12
 
-### 改进
-- 看板：每个图表显示所属数据源（数据源已删除时提示）；看板含多个数据源时显示「包含数据源」，并可切换「全部数据源 / 仅当前数据源」（按浏览器记住）；只看当前数据源时拖拽排序不会打乱被隐藏的图表。
-- 文档：README 改为以 npm 安装为主（插件页「添加插件」或 `dsh plugin add`），补充升级、卸载和从源码安装说明。
-- 推送大结果时不再静默省略：消息中会注明「共 N 行，消息中显示前 M 行」。飞书卡片表格最多 50 行（客户端内分页），Telegram 20 行，企业微信、钉钉 10 行。
-- 飞书应用机器人、Telegram 会把超出显示范围的结果作为完整数据 Excel 附件随消息发送（可在发送对话框取消，Agent 工具参数 `attachFull`）；附件失败不影响消息本身，会在推送记录中提示。
+### Added
+- Dashboards show each chart's data source (and flag deleted sources); a dashboard that mixes sources lists them and can be scoped to *All sources* or *Only the current source* (remembered per browser). Reordering while scoped keeps hidden charts in place.
+- Large results in IM messages: messages say how many rows are shown (Lark cards up to 50 rows with paging, Telegram 20, WeCom and DingTalk 10). Lark app bots and Telegram attach the full data as an Excel file (`attachFull`, on by default); a failed attachment does not fail the message and is noted in the delivery log.
+
+### Changed
+- README installation instructions now use npm (**Plugins → Add plugin** or `dsh plugin add`), with upgrade, uninstall and from-source steps.
 
 ## [0.11.1] - 2026-11-12
 
-### 修复
-- 中文界面下渠道类型、配置说明、推荐问题等显示为英文：读取 Harness 语言设置的方式有误（LocaleSnapshot 的 `active` 字段），已修正并加了回归测试。
+### Added
+- Release workflow: pushing a `v*` tag checks, packs and publishes to npm with trusted publishing and provenance, and creates the GitHub release.
 
-### 新增
-- GitHub Actions 发布流程：推送 `v*` 版本标签后自动检查、打包，并通过 npm 可信发布（OIDC，带来源证明）发布到 npm，同时创建 GitHub Release。
+### Fixed
+- Channel catalog text, suggested questions and number units showed in English in the Chinese UI (the UI read the wrong field of the Harness locale snapshot).
 
 ## [0.11.0] - 2026-11-12
 
-### 新增
-- 渠道架构：IM 平台改为适配器（`channels/`），统一的消息模型、能力声明、表单定义和机器人接口，详见 [docs/CHANNELS.md](docs/CHANNELS.md)。
-- 新平台：Telegram（推送、长轮询机器人、按钮）、企业微信（群机器人推送；智能机器人长连接问答与推送）、钉钉（自定义机器人推送；企业内部应用机器人 Stream 模式问答与推送）。以上新平台仅用模拟服务测试，尚未在真实账号上验证。
-- 成员身份支持多平台（`identities`），机器人按渠道配置，可同时运行多个。
-- 页面：「渠道」按平台分组、两步添加（选平台与类型 → 按表单填写），能力标签、配置步骤、选择群聊、测试；成员页「机器人」总览；成员身份编辑；设置「渠道与机器人」。
-- 问答页「试试这些问题」支持「换一批」；删除单条历史记录；「最近的提问」可删除并支持「显示更多」。
+### Added
+- Channel adapter architecture (`channels/`): a platform-neutral message model, capability declarations, form schemas and a bot interface ([docs/channels.md](docs/channels.md)).
+- Telegram (push, long-polling bot, inline buttons), WeCom (group webhook push; AI bot over the long connection) and DingTalk (custom robot push; internal app robot over Stream mode). These adapters are tested against local fakes only.
+- Multi-platform member identities; one bot per channel, several bots at once.
+- Redesigned pages: channels grouped by platform with a two-step add dialog, a bots overview, an identities editor, and a *Channels & bots* settings group.
+- Ask page: shuffle suggested questions, delete single history entries, show more recent questions.
 
-### 兼容
-- 旧的飞书渠道、机器人配置、成员字段和设置在首次加载时自动迁移；旧的 RPC 与数据格式继续可用。
+### Changed
+- Existing Lark channels, bot settings, member fields and settings are migrated on first load; old RPCs and payloads keep working.
 
 ## [0.10.0] - 2026-11-12
 
-### 新增
-- 飞书回复卡片上的交互按钮：按维度拆分、为什么变化、明细、固定到看板（经长连接回传，服务端校验权限）。
-- 业务知识「建议」：从 👍 反馈、重复出现的查询、常用聚合和取值映射中自动生成样例、指标、备注和词表建议，人工确认后采纳。
-- 开源准备：MIT 许可证、README、贡献指南、安全策略、CI。
+### Added
+- Interactive buttons on Lark answer cards: break down by a dimension, why did it change, details, pin to dashboard (via the long connection, re-authorized per click).
+- Knowledge suggestions mined from 👍 feedback, repeated queries, common aggregates and value mappings, accepted by a person.
+- Open-source groundwork: MIT license, README, contributing guide, security policy, CI.
 
-### 修复
-- `token_code` 等加密货币业务字段不再被误判为敏感字段。
-- 评测比对能识别同一组数字的不同排布（一行多列 / 多行一列）。
+### Fixed
+- Business columns such as `token_code` are no longer treated as sensitive.
+- Evaluation recognises the same numbers in pivoted shapes (one row with many columns vs. many rows).
 
 ## [0.9.0] - 2026-11-12
-- 页面改为 5 个常用页签 + 「管理」区；设置分组（说明、未保存提示、恢复默认、配置导出导入）。
-- 首次使用引导；问答页推荐问题与最近提问。
-- 看板拖拽排序、三档宽度、刷新与缓存状态；页面内提示替代浏览器弹窗；英文界面完整翻译。
-- 上传分块暂存；MySQL / PostgreSQL 大结果流式截断；大库按问题挑选相关表；日志保留条数可配置。
+
+### Changed
+- Page reorganised into five tabs plus a **Manage** area; grouped settings with descriptions, unsaved-changes bar, reset to defaults and configuration export / import.
+- Onboarding checklist; suggested and recent questions on the Ask page.
+- Dashboard drag-to-reorder, three widths, refresh and cache status; in-page dialogs instead of browser pop-ups; complete English UI.
+- Chunked uploads; streamed truncation of large MySQL / PostgreSQL results; relevant-table selection for large schemas; configurable log retention.
 
 ## [0.8.0] - 2026-11-12
-- 只读角色、行级权限、调度器补查与状态、日志迁移到 SQLite、代码拆分为 `service/` 与 `client-src/`、测试套件。
-- 安全修复：按方言词法的只读检查（修复 PostgreSQL 可写入问题）、访问控制绕过、飞书成员数据源范围、飞书回答错位。
+
+### Added
+- Viewer role, row-level rules, scheduler catch-up and status, logs stored in SQLite, `service/` and `client-src/` split, test suite.
+
+### Security
+- Per-dialect lexing for read-only admission (fixes writes through PostgreSQL), access-control bypasses, Lark member data source scopes, mismatched Lark answers.
 
 ## [0.7.0] - 2026-11-11
-- 指标告警、飞书 @机器人问答、下钻与归因、准确率评测、表结构变更检测、指标工具、多看板、Excel 导出、CSV / Excel 上传、结果持久化与缓存、业务知识导入导出、多用户权限与审计。
 
-## [0.6.0] 及更早
-- 界面重设计；飞书推送（Markdown 与原生图表）；访问控制、反馈闭环、看板全局筛选；PostgreSQL / Elasticsearch、SSH 隧道、隐私设置、自动概览、定时报告；语义层、关系图、扫描保护、历史与审计、看板；MVP。
+### Added
+- Metric alerts, Lark @-mention bot, drill-down and attribution, accuracy evaluation, schema change detection, metric tool, multiple dashboards, Excel export, CSV / Excel upload, persisted results and cache, knowledge import / export, members, permissions and audit.
+
+## [0.6.0] and earlier
+
+- Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
+
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.2...v0.12.0
+[0.11.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.1...v0.11.2
+[0.11.1]: https://github.com/hedeqiang/dsh-nl2sql/releases/tag/v0.11.1

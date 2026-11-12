@@ -1,5 +1,5 @@
 /**
- * Channel adapter registry (see docs/CHANNELS.md).
+ * Channel adapter registry (see docs/channels.md).
  *
  * Built-in adapters: lark (static), telegram / wecom / dingtalk (loaded with
  * dynamic import so a missing or broken module never breaks the registry).

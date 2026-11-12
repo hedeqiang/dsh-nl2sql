@@ -65,7 +65,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     tableOverview: { table: 'orders', results: [result, { title: 'bad', sql: 'x', error: 'boom' }] }, saveReport: {}, testConnection: { ok: true, version: 'PostgreSQL 18', tableCount: 2, latencyMs: 3, viaSsh: true, warnings: [] }, explain: { plan: [{ id: 1, table: 'orders', type: 'ALL', rows: 10 }] },
   }
   const rpcCalls = []
-  // 'legacy' simulates a host without the multi-platform channel RPCs (docs/CHANNELS.md).
+  // 'legacy' simulates a host without the multi-platform channel RPCs (docs/channels.md).
   let hostMode = 'legacy'
   const NEW_ONLY = ['channelCatalog', 'botStatus', 'saveBot', 'restartBot', 'listChannelTargets']
   global.fetch = async (url, init) => {
@@ -394,7 +394,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.match(document.body.textContent, /已发送到/)
   })
 
-  // ------------------------------------------------ new host (docs/CHANNELS.md)
+  // ------------------------------------------------ new host (docs/channels.md)
   // English differs from Chinese on purpose: the UI must pick the active locale (zh here).
   const tx = (zh, en) => ({ zh, en: en ?? `EN:${zh}` })
   const newCatalog = [

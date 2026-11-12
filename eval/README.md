@@ -1,34 +1,41 @@
-# 隔离评测环境
+# Accuracy benchmark
 
-在 Docker 里的合成数据上评测 Agent 回答准确率，不接触任何真实数据库。
+An isolated benchmark that measures how accurately the agent answers business questions, using synthetic data in Docker. It never touches a real database.
 
-- `01-schema.sql`：表结构（与 ledger 业务库同构，只有 DDL）。
-- `02-data.sql`：脚本生成的合成数据（3 个商户、600 个用户、约 1200 条分录、充值/提现/转账/调账/收款单）。
-- `knowledge.json`：评测用的业务知识（词表 11、指标 8、字段备注 6、样例问答 18）。样例问答即评测题。
+| File | Contents |
+|---|---|
+| `01-schema.sql` | Schema of a ledger-style business database (DDL only) |
+| `02-data.sql` | Generated synthetic data: 3 merchants, 600 users, ~1,200 journal entries, deposits, withdrawals, transfers, adjustments and invoices |
+| `knowledge.json` | Business knowledge: 11 glossary terms, 8 metrics, 6 column notes and 18 verified question → SQL examples. The examples are the benchmark questions. |
 
-## 运行
+## Run it
 
 ```bash
-# 1. 只读 MySQL 5.7
+# 1. A MySQL 5.7 database with a read-only user
 docker run -d --name nl2sql-eval-mysql -p 127.0.0.1:43306:3306 \
   -e MYSQL_ROOT_PASSWORD=evalroot -e MYSQL_DATABASE=ledger_sim \
   -v "$PWD/eval":/docker-entrypoint-initdb.d:ro mysql:5.7 --character-set-server=utf8mb4
 docker exec nl2sql-eval-mysql mysql -uroot -pevalroot -e \
   "CREATE USER 'reader'@'%' IDENTIFIED BY 'reader'; GRANT SELECT, SHOW VIEW ON ledger_sim.* TO 'reader'@'%';"
 
-# 2. 独立的 Harness（DSH_HOME 指向临时目录，web 档案加载本插件，模型路由与桌面版相同）
+# 2. A separate Harness instance (its own DSH_HOME), with this plugin installed in the "web" profile
 DSH_HOME=/tmp/nl2sql-eval-home dsh --profile web --no-open --host 127.0.0.1 --port 47811
 ```
 
-在这个独立实例的「数据问答 → 管理 → 数据源」添加 `127.0.0.1:43306 / reader / ledger_sim`，
-在「业务知识 → 导入」导入 `knowledge.json`，然后在「业务知识 → 评测」选择「Agent 回答」开始评测。
+In that instance:
 
-## 基线（2026-11-12，模型 auto/gpt-6-sol）
+1. **Data Q&A → Manage → Data sources**: add `127.0.0.1:43306`, user `reader`, password `reader`, database `ledger_sim`.
+2. **Knowledge → Import**: import `knowledge.json`.
+3. **Knowledge → Evaluation**: choose **Agent answers** and start the run.
 
-| 轮次 | 通过 | 说明 |
+Results are compared by value, ignoring column names, column order and row order (and pivoted shapes).
+
+## Baseline (2026-11-12, model `auto/gpt-6-sol`)
+
+| Run | Passed | Notes |
 |---|---|---|
-| 1 | 17/18 | 「调增和调减各多少笔」Agent 返回一行两列（透视形态），评测比对当时不支持 → 已让比对识别透视形态 |
-| 2 | 17/18 | 「收款单的金额和已退款金额」题目没说按状态，Agent 合理地只统计已支付 → 改写题目 |
-| 3 | 18/18 | 全部通过，用时 162 秒（并发 2） |
+| 1 | 17 / 18 | One answer returned a single row with two columns (pivoted); the comparison now recognises pivoted shapes. |
+| 2 | 17 / 18 | One question was ambiguous (it did not say "by status"); the question was reworded. |
+| 3 | **18 / 18** | All passed in 162 s (concurrency 2). |
 
-SQL 回放：18/18。
+SQL replay of the examples: 18 / 18.

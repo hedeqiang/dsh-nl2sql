@@ -1,7 +1,7 @@
 {
   "name": "@hedeqiang/dsh-nl2sql",
-  "version": "0.11.2",
-  "description": "Data Q&A (NL2SQL) for DeepSeek Harness: ask MySQL / PostgreSQL / Elasticsearch / CSV in plain language, charts, dashboards, alerts, IM push and bots (Lark/Feishu, Telegram, WeCom, DingTalk), access control.",
+  "version": "0.12.0",
+  "description": "Ask MySQL, PostgreSQL, Elasticsearch and CSV/Excel in plain language inside DeepSeek Harness: charts, dashboards, alerts, and IM push and bots for Lark/Feishu, Telegram, WeCom and DingTalk.",
   "type": "module",
   "exports": {
     ".": "./index.js",
@@ -29,10 +29,10 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "README.en.md",
     "LICENSE",
     "CHANGELOG.md",
-    "docs/CHANNELS.md"
+    "README.zh-CN.md",
+    "docs/channels.md"
   ],
   "dependencies": {
     "@larksuiteoapi/node-sdk": "1.76.0",
@@ -93,5 +93,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://github.com/hedeqiang/dsh-nl2sql#readme",
+  "bugs": {
+    "url": "https://github.com/hedeqiang/dsh-nl2sql/issues"
   }
 }

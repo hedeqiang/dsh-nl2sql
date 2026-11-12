@@ -1,0 +1,67 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please do **not** include passwords, tokens or real business data.
+        Security issues: follow SECURITY.md instead of opening a public issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead? Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a PostgreSQL data source …
+        2. Ask "…"
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      description: Data Q&A → Manage → Settings → About
+      placeholder: "0.11.2"
+    validations:
+      required: true
+  - type: input
+    id: harness
+    attributes:
+      label: DeepSeek Harness version and OS
+      placeholder: "0.2.x, macOS 15 (desktop) / dsh web on Linux"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Data sources / connection
+        - Schema analysis
+        - Asking / SQL generation
+        - Dashboards
+        - Knowledge / evaluation
+        - Alerts / reports
+        - IM push (Lark / Telegram / WeCom / DingTalk)
+        - IM bot
+        - Members / access control
+        - Other
+  - type: input
+    id: db
+    attributes:
+      label: Database type and version
+      placeholder: "MySQL 5.7.44 / PostgreSQL 16 / Elasticsearch 8.x"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or logs
+      render: text

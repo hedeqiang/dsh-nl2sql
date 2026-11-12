@@ -3,7 +3,7 @@
  *
  * OutboundMessage = { title, text?, results?, footer?, includeSql?, chartMode?, mentionAll?, template? }
  * ResultBlock     = { title, columns:[{name,kind}], rows, rowCount, truncated, chart, sql?, filters?, error?, actions? }
- * (see docs/CHANNELS.md)
+ * (see docs/channels.md)
  */
 import * as echarts from 'echarts'
 import { Resvg } from '@resvg/resvg-js'

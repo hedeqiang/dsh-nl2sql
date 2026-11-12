@@ -14,7 +14,7 @@ import { admitSql, lexSql } from '../sql-guard.js'
 import { textGrams } from './schema.js'
 import { SENSITIVE_NAME, UserError, hashText } from './shared.js'
 
-/** Thresholds (see DEVELOPMENT.md). */
+/** Thresholds (see docs/development.md). */
 export const SUGGEST = {
   shapeMin: 2, // agent queries with the same literal-free shape
   metricMin: 3, // distinct successful queries using the same aggregate + filter on one table

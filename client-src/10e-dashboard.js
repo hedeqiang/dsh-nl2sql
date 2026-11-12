@@ -143,7 +143,7 @@
               h('div', { className: 'n2s-h2', style: { margin: 0 } }, fmt(t, 'dash.count', { count: widgets.length })),
               (mixed || hiddenByScope > 0 || (ds && sourceIds.some(id => id !== ds.id))) && h('div', { className: 'n2s-seg small', role: 'group', 'aria-label': t('dash.scope') },
                 ['all', 'current'].map(v => h('button', { key: v, type: 'button', 'aria-pressed': scope === v, disabled: v === 'current' && !ds, onClick: () => setScope(v) }, v === 'all' ? t('dash.scopeAll') : fmt(t, 'dash.scopeCurrent', { name: ds?.name ?? '' }))))),
-            showSource && h('div', { className: 'n2s-faint n2s-small' }, fmt(t, 'dash.sources', { list: sourceIds.map(id => dsById.get(id)?.name ?? t('dash.sourceMissingShort')).join('、') })),
+            showSource && h('div', { className: 'n2s-faint n2s-small' }, fmt(t, 'dash.sources', { list: sourceIds.map(id => dsById.get(id)?.name ?? t('dash.sourceMissingShort')).join(uiLang === 'zh' ? '、' : ', ') })),
             h('div', { className: 'n2s-faint n2s-small', role: 'status', 'aria-live': 'polite' },
               loadingN > 0 ? fmt(t, 'dash.loadingN', { n: loadingN }) : lastAt ? fmt(t, 'dash.lastRefresh', { time: new Date(lastAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }) : '',
               cachedN > 0 && loadingN === 0 ? h('span', null, ' · ', h('button', { type: 'button', className: 'n2s-link', title: t('dash.cachedHint'), onClick: () => setTick(x => x + 1) }, fmt(t, 'dash.cachedN', { n: cachedN }))) : null,

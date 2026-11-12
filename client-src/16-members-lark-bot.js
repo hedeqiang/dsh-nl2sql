@@ -248,7 +248,7 @@
               h('div', { className: 'n2s-grow', style: { minWidth: 0 } },
                 h('div', { className: 'n2s-row', style: { gap: 6 } }, h('span', { className: 'n2s-list2-title' }, u.name), h('span', { className: 'n2s-badge' }, t(`mb.role.${u.role}`)), u.disabled && h('span', { className: 'n2s-badge err' }, t('mb.disabled'))),
                 h('div', { className: 'n2s-row', style: { gap: 6, marginTop: 4 } }, h(IdentityChips, { t, u, catalog }), h('span', { className: 'n2s-muted n2s-small' }, u.datasourceIds === null ? t('mb.allDs') : (u.datasourceNames ?? []).join(uiLang === 'zh' ? '、' : ', ') || t('mb.noDs'))),
-                (u.rowRules ?? []).length > 0 && h('div', { className: 'n2s-list2-sub' }, `${t('mb.rowRules')}：${u.rowRules.map(r => `${r.column} ∈ {${r.values.join(', ')}}`).join('；')}`)),
+                (u.rowRules ?? []).length > 0 && h('div', { className: 'n2s-list2-sub' }, `${colon(t('mb.rowRules'))}${u.rowRules.map(r => `${r.column} ∈ {${r.values.join(', ')}}`).join('；')}`)),
               h('div', { className: 'n2s-list2-side' }, h('span', { className: 'n2s-small' }, us ? fmt(t, 'mb.queries', { n: us.queries }) : t('mb.noUsage')), us?.lastAt && h('span', { className: 'n2s-faint n2s-small' }, new Date(us.lastAt).toLocaleDateString())),
               h(Dropdown, { label: fmt(t, 'ch.actionsFor', { name: u.name }), trigger: { content: Icon.more() }, items: [
                 { label: t('ds.edit'), icon: Icon.edit(14), onClick: () => setEditing(u) },
