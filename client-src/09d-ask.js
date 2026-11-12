@@ -27,7 +27,7 @@
             h('div', { className: 'desc' }, t(`ob.${x.key}.desc`))),
           current === x && h('button', { type: 'button', className: 'n2s-btn small primary', disabled: busy || (x.key !== 'connect' && !ds), onClick: x.action }, busy && x.key === 'analyze' ? h('span', { className: 'n2s-spin' }) : null, t(`ob.${x.key}.cta`))))),
         !v.hasChannel && h('div', { className: 'n2s-onboard-extra' },
-          h(TypeTile, { type: 'lark_app' }),
+          h(PlatformMark, { t, platform: 'lark' }),
           h('div', { className: 'n2s-grow' }, h('div', { style: { fontWeight: 500, fontSize: 13.5 } }, t('ob.push')), h('div', { className: 'n2s-muted n2s-small' }, t('ob.push.desc'))),
           h('button', { type: 'button', className: 'n2s-btn small', onClick: () => onNavigate({ tab: 'admin', section: 'push' }) }, t('ob.push.cta'))))
     }

@@ -9,7 +9,7 @@
       privacy: ['sampleMode', 'resultToModel', 'modelRows', 'maskSensitive'],
       query: ['maxRows', 'timeoutMs', 'scanGuardRows', 'cacheTtlSec', 'schemaOverviewMax'],
       automation: ['schemaWatch', 'schemaCheckDaily', 'schemaNotifyChannel'],
-      lark: ['larkDefaultRole'],
+      lark: ['botDefaultRole', 'larkDefaultRole'],
       storage: ['retention'],
       about: [],
     }
@@ -75,6 +75,8 @@
         h('input', { type: 'radio', name: key, checked: form[key] === v, onChange: () => set(key, v) }),
         h('span', null, h('span', { className: 'title' }, t(`${prefix}.${v}`)), h('span', { className: 'desc' }, t(`${prefix}.${v}.desc`))))))
       const num = (key, props = {}) => h('input', { id: `set-${key}`, className: 'n2s-input', type: 'number', style: { maxWidth: 200 }, value: form[key] ?? '', onChange: e => set(key, e.target.value === '' ? '' : Number(e.target.value)), ...props })
+      // New hosts expose botDefaultRole (larkDefaultRole stays as an alias); old ones only larkDefaultRole.
+      const roleKey = 'botDefaultRole' in base ? 'botDefaultRole' : 'larkDefaultRole'
       const overrides = datasources.filter(d => d.privacy && Object.keys(d.privacy).length)
       const body =
         group === 'privacy' ? h(React.Fragment, null,
@@ -99,8 +101,9 @@
             form.schemaCheckDaily && h('button', { type: 'button', className: 'n2s-btn small ghost', onClick: () => set('schemaCheckDaily', '') }, t('set.turnOff')))),
           h(SettingRow, { label: t('set.l.notify'), hint: t('set.h.schemaNotify'), changed: changed('schemaNotifyChannel') }, h(ChannelSelect, { t, value: form.schemaNotifyChannel ?? '', onChange: v => set('schemaNotifyChannel', v) }))) :
         group === 'lark' ? h(React.Fragment, null,
-          h(LarkSummaryCard, { t, onOpenMembers: () => onNavigate({ section: 'members' }), onOpenPush: () => onNavigate({ section: 'push' }) }),
-          h(SettingRow, { label: t('set.l.unknownLark'), hint: t('set.h.larkDefaultRole'), changed: changed('larkDefaultRole') }, radio('larkDefaultRole', ['none', 'viewer', 'analyst'], 'mb.defaultRole'))) :
+          h(SettingRow, { label: t('set.defaultChannel'), hint: t('set.h.defaultChannel'), htmlFor: 'set-defchannel' }, h(DefaultChannelControl, { t, onOpenPush: () => onNavigate({ section: 'push' }) })),
+          h(SettingRow, { label: t('set.l.unknownUser'), hint: t('set.h.botDefaultRole'), changed: changed(roleKey) }, radio(roleKey, ['none', 'viewer', 'analyst'], 'mb.defaultRole')),
+          h(BotSummary, { t, onOpenMembers: () => onNavigate({ section: 'members' }), onOpenPush: () => onNavigate({ section: 'push' }) })) :
         group === 'storage' ? h(StorageSection, { t, form, set, changed, defaults }) :
         h(AboutSection, { t })
       const canReset = GROUP_KEYS[group].length > 0
@@ -133,20 +136,49 @@
         h('button', { type: 'button', className: 'n2s-btn small', onClick: onOpen }, t('set.openAlerts')))
     }
 
-    function LarkSummaryCard({ t, onOpenMembers, onOpenPush }) {
-      const bot = useAsync(() => call('larkBotStatus').catch(() => null), [])
+    /** Default channel: applied immediately (it is a channel property, not a setting). */
+    function DefaultChannelControl({ t, onOpenPush }) {
       const channels = useChannels()
       const def = channels.find(c => c.isDefault)
-      const state = bot.value?.status?.state ?? 'idle'
-      return h('div', { className: 'n2s-infogrid' },
-        h('div', { className: 'n2s-infocard' },
-          h('span', { className: `n2s-statusdot ${state === 'connected' ? 'ok' : state === 'error' ? 'err' : ''}` }, t('bot.title')),
-          h('span', { className: 'n2s-muted n2s-small n2s-grow' }, bot.value?.enabled ? t(`bot.state.${state}`) : t('bot.state.idle')),
-          h('button', { type: 'button', className: 'n2s-btn small', onClick: onOpenMembers }, t('set.configure'))),
-        h('div', { className: 'n2s-infocard' },
-          h('span', { className: 'n2s-small', style: { fontWeight: 500 } }, t('set.defaultChannel')),
-          h('span', { className: 'n2s-muted n2s-small n2s-grow' }, def ? def.name : channels.length ? t('set.noDefaultChannel') : t('set.noChannels')),
-          h('button', { type: 'button', className: 'n2s-btn small', onClick: onOpenPush }, t('set.configure'))))
+      if (!channels.length) return h('div', { className: 'n2s-row' }, h('span', { className: 'n2s-muted n2s-small' }, t('set.noChannels')), h('button', { type: 'button', className: 'n2s-btn small', onClick: onOpenPush }, t('im.add')))
+      return h('div', { style: { maxWidth: 380 } }, h(ChannelPicker, {
+        t, id: 'set-defchannel', value: def?.id ?? '', noneLabel: def ? undefined : t('set.noDefaultChannel'),
+        onChange: async (id) => {
+          const c = channels.find(x => x.id === id)
+          if (!c) return
+          try { await makeDefault(c); notify(t('ch.defaultSet'), 'ok') } catch (e) { notifyError(e) }
+          refreshChannels()
+        },
+      }))
+    }
+
+    /** Bots per platform: how many are on and whether any is failing. */
+    function BotSummary({ t, onOpenMembers, onOpenPush }) {
+      const channels = useChannels()
+      const bots = useBots()
+      const { catalog } = useCatalog(t)
+      const capable = channels.filter(c => (c.capabilities ?? findKind(catalog, c.type)?.kind?.capabilities)?.bot)
+      const byPlatform = []
+      for (const c of capable) {
+        let g = byPlatform.find(x => x.platform === c.platform)
+        if (!g) byPlatform.push(g = { platform: c.platform, total: 0, on: 0, err: 0, ok: 0 })
+        const b = botOf(c, bots)
+        const s = botStateOf(b)
+        g.total++
+        if (b.enabled) g.on++
+        if (s === 'error') g.err++
+        if (s === 'connected') g.ok++
+      }
+      return h(React.Fragment, null,
+        h('div', { className: 'n2s-setsub' }, t('ch.bots')),
+        byPlatform.length === 0
+          ? h('div', { className: 'n2s-setnote' }, t('ch.bots.emptyHint'), ' ', h('button', { type: 'button', className: 'n2s-link', onClick: onOpenPush }, t('ch.bots.goAdd')))
+          : h('div', { className: 'n2s-infogrid' }, byPlatform.map(g => h('div', { key: g.platform, className: 'n2s-infocard' },
+            h(PlatformMark, { t, platform: g.platform, size: 28 }),
+            h('div', { className: 'n2s-grow', style: { minWidth: 0 } },
+              h('div', { className: 'n2s-small', style: { fontWeight: 500 } }, platformName(t, g.platform, catalog)),
+              h('span', { className: `n2s-statusdot ${g.err ? 'err' : g.ok ? 'ok' : ''}` }, g.err ? fmt(t, 'ch.sum.err', { n: g.err }) : fmt(t, 'ch.sum.on', { on: g.on, total: g.total }))),
+            h('button', { type: 'button', className: 'n2s-btn small', onClick: onOpenMembers }, t('set.configure'))))))
     }
 
     const RETENTION_KINDS = ['history', 'feedback', 'delivery', 'alertEvent', 'admin', 'evalRun', 'schemaChange']

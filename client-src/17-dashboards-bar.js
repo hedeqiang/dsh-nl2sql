@@ -26,8 +26,7 @@
     }
 
     function ChannelSelect({ t, value, onChange }) {
-      const channels = useChannels()
-      return h('select', { className: 'n2s-select', value, onChange: e => onChange(e.target.value) }, h('option', { value: '' }, t('rep.pushNone')), channels.map(c => h('option', { key: c.id, value: c.id }, c.name)))
+      return h('div', { style: { maxWidth: 380 } }, h(ChannelPicker, { t, value, onChange, noneLabel: t('rep.pushNone'), label: t('set.l.notify') }))
     }
 
     // Questions started from the page bind their new session to the chosen

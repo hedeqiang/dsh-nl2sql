@@ -14,10 +14,8 @@
     const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]
 
     function ReportChannelField({ t, value, onChange }) {
-      const channels = useChannels()
-      return h('label', { className: 'n2s-field full' }, h('span', null, t('rep.push')),
-        h('select', { className: 'n2s-select', value, onChange: e => onChange(e.target.value) },
-          h('option', { value: '' }, t('rep.pushNone')), channels.map(c => h('option', { key: c.id, value: c.id }, `${c.name} · ${t(`im.type.${c.type}`)}`))))
+      return h('div', { className: 'n2s-field full' }, h('label', { htmlFor: 'n2s-rep-channel', className: 'n2s-flabel' }, t('rep.push')),
+        h(ChannelPicker, { t, id: 'n2s-rep-channel', value, onChange, noneLabel: t('rep.pushNone') }))
     }
 
     function ReportForm({ t, datasources, initial, defaultDatasourceId, onDone, onCancel }) {

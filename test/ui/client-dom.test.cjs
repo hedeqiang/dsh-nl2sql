@@ -64,7 +64,14 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     tableOverview: { table: 'orders', results: [result, { title: 'bad', sql: 'x', error: 'boom' }] }, saveReport: {}, testConnection: { ok: true, version: 'PostgreSQL 18', tableCount: 2, latencyMs: 3, viaSsh: true, warnings: [] }, explain: { plan: [{ id: 1, table: 'orders', type: 'ALL', rows: 10 }] },
   }
   const rpcCalls = []
-  global.fetch = async (url, init) => { const { method, payload } = JSON.parse(init.body); rpcCalls.push({ method, payload }); const r = responses[method]; return { status: 200, json: async () => ({ ok: true, value: typeof r === 'function' ? r(payload) : (r ?? null) }) } }
+  // 'legacy' simulates a host without the multi-platform channel RPCs (docs/CHANNELS.md).
+  let hostMode = 'legacy'
+  const NEW_ONLY = ['channelCatalog', 'botStatus', 'saveBot', 'restartBot', 'listChannelTargets']
+  global.fetch = async (url, init) => {
+    const { method, payload } = JSON.parse(init.body); rpcCalls.push({ method, payload })
+    if (hostMode === 'legacy' && NEW_ONLY.includes(method)) return { status: 404, json: async () => ({ ok: false, error: { code: 'nl2sql/unknown-method', message: `unknown method ${method}` } }) }
+    const r = responses[method]; return { status: 200, json: async () => ({ ok: true, value: typeof r === 'function' ? r(payload) : (r ?? null) }) }
+  }
 
   // ------------------------------------------------------------ load the client plugin
   let plugin
@@ -115,7 +122,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.deepEqual(tabs, ['问答', '看板', '表结构', '业务知识', '历史', '管理'])
     await clickEl(document.getElementById('n2s-tab-admin'))
     const nav = [...document.querySelectorAll('.n2s-adminnav-item')].map((b) => b.textContent.replace(/\d+$/, '').trim())
-    assert.deepEqual(nav, ['数据源', '成员与权限', '告警与报告', '推送渠道', '设置'])
+    assert.deepEqual(nav, ['数据源', '成员与权限', '告警与报告', '渠道', '设置'])
     // keyboard: ArrowLeft from 管理 goes to 历史
     await act(async () => { document.getElementById('n2s-tab-admin').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })) }); await settle()
     assert.equal(document.querySelector('.n2s-tabs [aria-selected=true]').textContent.trim(), '历史')
@@ -155,7 +162,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await clickEl(document.querySelector('button[aria-label="结果有问题"]')); assert.match(text(), /哪里不对/)
     await click('用错了表'); await click('提交'); assert.match(text(), /问题清单/)
     assert.ok(rpcCalls.some((c) => c.method === 'submitFeedback'))
-    await clickEl(document.querySelector('button[aria-label="发送到飞书"]')); assert.match(document.body.textContent, /发送到飞书/)
+    await clickEl(document.querySelector('button[aria-label="发送到 IM"]')); assert.match(document.body.textContent, /发送到 IM 渠道/)
     await clickEl([...document.body.querySelectorAll('.n2s-modal button')].find((b) => b.textContent === '发送'), 40)
     assert.match(document.body.textContent, /已发送到 数据群/)
   })
@@ -225,13 +232,40 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await click('取消')
   })
 
-  await test('推送: channel list, app-bot form, chat picker', async () => {
-    await openAdmin('推送渠道')
-    assert.match(text(), /数据群/); assert.match(text(), /应用机器人/); assert.match(text(), /签名校验失败/)
-    await click('+ 添加渠道'); await click('应用机器人'); assert.match(text(), /App Secret/)
-    await setValue([...document.querySelectorAll('input')].find((i) => i.placeholder === 'cli_xxx'), 'cli_1')
-    await click('选择群聊'); assert.match(text(), /运营群/)
-    await click('取消')
+  const modal = () => [...document.querySelectorAll('.n2s-modal')].pop()
+  const field = (key) => document.getElementById(`n2s-chf-${key}`)
+
+  await test('渠道 (old host): legacy listChannels shape, built-in Lark catalog, add form, chat picker', async () => {
+    await openAdmin('渠道')
+    assert.match(text(), /数据群/); assert.match(text(), /应用机器人/)
+    assert.match(text(), /oc_1/, 'target summary from legacy flat fields')
+    assert.doesNotMatch(text(), /签名校验失败/, 'delivery log is collapsed')
+    await click('推送记录'); assert.match(text(), /签名校验失败/)
+    assert.ok(document.querySelector('.n2s-pgroup .n2s-pmark'), 'platform mark')
+    await click('+ 添加渠道')
+    const tiles = [...modal().querySelectorAll('[role=radio]')].map((b) => b.textContent)
+    assert.equal(tiles.length, 1, 'built-in catalog has Lark only'); assert.match(tiles[0], /飞书/)
+    await clickEl([...modal().querySelectorAll('.n2s-kindcard')].find((b) => b.textContent.includes('应用机器人')))
+    assert.match(modal().textContent, /App Secret/); assert.match(modal().textContent, /配置步骤/)
+    await setValue(field('appId'), 'cli_1')
+    await click('选择群聊', modal()); assert.match(modal().textContent, /运营群/)
+    assert.ok(rpcCalls.some((c) => c.method === 'listChannelChats' && c.payload.appId === 'cli_1'), 'legacy chat RPC')
+    await click('取消', modal())
+    assert.ok(!modal(), 'dialog closed')
+  })
+
+  await test('渠道 (old host): edit existing Lark app channel, secrets kept, flat save payload', async () => {
+    await menu('「应用机器人」的操作', '编辑')
+    assert.equal(field('appId').value, 'cli_1')
+    assert.equal(field('appSecret').value, '')
+    assert.equal(field('appSecret').placeholder, '已设置，留空不修改')
+    await click('选择群聊', modal()); await click('运营群', modal())
+    assert.equal(field('receiveId').value, 'oc_9')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '保存'), 40)
+    const save = rpcCalls.filter((c) => c.method === 'saveChannel').pop().payload
+    assert.equal(save.id, 'ch2'); assert.equal(save.type, 'lark_app'); assert.equal(save.appId, 'cli_1'); assert.equal(save.receiveId, 'oc_9')
+    assert.ok(!('appSecret' in save), 'unchanged secret not sent'); assert.ok(!('config' in save), 'flat payload for old host')
+    assert.ok(!modal(), 'dialog closed after save')
   })
 
   await test('历史: row expands; single entry can be deleted', async () => {
@@ -265,7 +299,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
   await test('设置: groups, unsaved bar, save, restore defaults, storage', async () => {
     await openAdmin('设置')
     const groups = [...document.querySelectorAll('.n2s-setgroups button')].map((b) => b.textContent.trim())
-    assert.deepEqual(groups, ['模型可见数据', '查询', '自动任务', '飞书', '数据与存储', '关于'])
+    assert.deepEqual(groups, ['模型可见数据', '查询', '自动任务', '渠道与机器人', '数据与存储', '关于'])
     assert.ok(!document.querySelector('.n2s-savebar'), 'no save bar initially')
     await click('查询')
     await setValue(document.getElementById('set-maxRows'), '900')
@@ -330,6 +364,200 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.match(modal.textContent, /原生图表/); assert.match(modal.textContent, /跟随渠道/)
     await clickEl([...modal.querySelectorAll('button')].find((b) => b.textContent === '发送'), 40)
     assert.match(document.body.textContent, /已发送到/)
+  })
+
+  // ------------------------------------------------ new host (docs/CHANNELS.md)
+  const tx = (zh, en) => ({ zh, en: en ?? zh })
+  const newCatalog = [
+    { platform: 'lark', name: tx('飞书', 'Lark'), kinds: [
+      { id: 'lark_webhook', label: tx('群机器人（Webhook）'), description: tx('群自定义机器人'), fields: [{ key: 'webhookUrl', label: tx('Webhook 地址'), type: 'secret', secret: true, required: true }], capabilities: { push: true, charts: 'native', buttons: false, bot: false, listTargets: false }, setupSteps: tx(['添加自定义机器人']) },
+      { id: 'lark_app', label: tx('应用机器人'), description: tx('企业自建应用'), fields: [{ key: 'appId', label: tx('App ID'), type: 'text', required: true }, { key: 'appSecret', label: tx('App Secret'), type: 'secret', secret: true, required: true }, { key: 'receiveId', label: tx('接收者'), type: 'text', required: true }], capabilities: { push: true, charts: 'native', buttons: true, bot: true, listTargets: true }, setupSteps: tx(['创建应用']) },
+    ] },
+    { platform: 'telegram', name: tx('Telegram'), kinds: [
+      { id: 'telegram_bot', label: tx('Telegram 机器人'), description: tx('通过 @BotFather 创建的机器人'), fields: [
+        { key: 'botToken', label: tx('Bot Token'), type: 'secret', secret: true, required: true, help: tx('从 @BotFather 获取') },
+        { key: 'chatId', label: tx('Chat ID'), type: 'text', required: true, pattern: '^-?\\d+$' },
+        { key: 'parseMode', label: tx('格式'), type: 'select', options: [{ value: 'html', label: tx('HTML') }, { value: 'plain', label: tx('纯文本') }] },
+        { key: 'threadId', label: tx('话题 ID'), type: 'text', showIf: { key: 'parseMode', equals: 'html' } },
+      ], capabilities: { push: true, charts: 'image', buttons: true, bot: true, listTargets: true }, setupSteps: tx(['找 @BotFather 创建机器人', '把机器人拉进群']) },
+    ] },
+    { platform: 'dingtalk', name: tx('钉钉', 'DingTalk'), kinds: [
+      { id: 'dingtalk_webhook', label: tx('自定义机器人'), description: tx('群 Webhook'), fields: [{ key: 'webhookUrl', label: tx('Webhook 地址'), type: 'secret', secret: true, required: true }], capabilities: { push: true, charts: 'none', buttons: false, bot: false, listTargets: false }, setupSteps: tx([]) },
+    ] },
+  ]
+  const newChannels = [
+    { id: 'ch1', name: '数据群', type: 'lark_webhook', platform: 'lark', isDefault: true, chartMode: 'native', config: {}, secretsSet: { webhookUrl: true }, capabilities: newCatalog[0].kinds[0].capabilities, lastSentAt: Date.now() },
+    { id: 'ch2', name: '应用机器人', type: 'lark_app', platform: 'lark', config: { appId: 'cli_1', receiveId: 'oc_1' }, secretsSet: { appSecret: true }, capabilities: newCatalog[0].kinds[1].capabilities, bot: { enabled: true, allowP2p: true, sessionScope: 'chat', status: { state: 'connected' } } },
+    { id: 'ch4', name: '钉钉群', type: 'dingtalk_webhook', platform: 'dingtalk', config: {}, secretsSet: { webhookUrl: true }, capabilities: newCatalog[2].kinds[0].capabilities, lastError: '签名不匹配' },
+    { id: 'ch5', name: 'TG 运营', type: 'telegram_bot', platform: 'telegram', config: { chatId: '-1001' }, secretsSet: { botToken: true }, capabilities: newCatalog[1].kinds[0].capabilities, bot: { enabled: false, allowP2p: false, sessionScope: 'user', status: { state: 'idle' } } },
+  ]
+  const enterNewHost = async () => {
+    hostMode = 'new'
+    Object.assign(responses, {
+      channelCatalog: newCatalog, listChannels: newChannels,
+      botStatus: [{ channelId: 'ch2', channelName: '应用机器人', platform: 'lark', enabled: true, status: { state: 'connected' }, info: { name: 'DataBot' }, conversations: [{ key: 'ch2:oc_1', chatName: '运营群', lastQuestion: '昨天 GMV', lastAt: Date.now() }] }, { channelId: 'ch5', channelName: 'TG 运营', platform: 'telegram', enabled: false, status: { state: 'idle' }, conversations: [] }],
+      saveBot: { channelId: 'ch5', enabled: true, status: { state: 'connecting' } },
+      listChannelTargets: [{ id: '-100777', name: 'Ops group', type: 'group' }],
+      testChannel: { ok: true, detail: '@data_bot' },
+      saveChannel: { id: 'ch9' },
+      getSettings: { ...responses.getSettings, botDefaultRole: 'viewer', larkDefaultRole: 'viewer' },
+      listUsers: [{ id: 'u1', kind: 'person', name: '张三', role: 'analyst', datasourceIds: null, identities: [{ platform: 'lark', id: 'ou_1', email: 'z@x.com' }, { platform: 'telegram', id: '42' }] }, { id: 'u2', kind: 'person', name: '李四', role: 'viewer', datasourceIds: [], datasourceNames: [], larkOpenId: 'ou_legacy' }],
+    })
+    await openAdmin('数据源')
+  }
+
+  await test('渠道 (new host): grouped by platform, capability chips, bot status, tables-only kind', async () => {
+    await sleep(1300) // let the earlier send dialog auto-close
+    await enterNewHost()
+    await openAdmin('渠道')
+    const groups = [...document.querySelectorAll('.n2s-pgroup-head')].map((g) => g.textContent.replace(/\d+$/, ''))
+    assert.deepEqual(groups, ['飞飞书', 'TGTelegram', '钉钉钉'])
+    const tg = document.querySelector('[data-channel="ch5"]')
+    assert.match(tg.textContent, /-1001/); assert.match(tg.textContent, /图片图表/); assert.match(tg.textContent, /按钮/); assert.match(tg.textContent, /机器人 · 未启用/)
+    assert.match(document.querySelector('[data-channel="ch2"]').textContent, /机器人 · 已连接/)
+    const dd = document.querySelector('[data-channel="ch4"]')
+    assert.match(dd.textContent, /仅表格/); assert.match(dd.textContent, /签名不匹配/); assert.match(dd.textContent, /Webhook 地址已加密保存/)
+    assert.doesNotMatch(document.querySelector('.n2s-pgroups').textContent, /botToken|appSecret/)
+  })
+
+  await test('渠道 (new host): picker → Telegram form from fields → validation → save {type, config, secrets, bot}', async () => {
+    await click('+ 添加渠道')
+    const radios = [...modal().querySelectorAll('[role=radio]')]
+    assert.equal(radios.length, 3)
+    // keyboard: ArrowRight moves to and selects Telegram
+    radios[0].focus()
+    await act(async () => { radios[0].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) }); await settle()
+    assert.equal(document.activeElement.textContent.includes('Telegram'), true, 'focus moved')
+    assert.equal(modal().querySelector('[role=radio][aria-checked=true]').textContent.includes('Telegram'), true, 'selected')
+    const card = [...modal().querySelectorAll('.n2s-kindcard')].find((b) => b.textContent.includes('Telegram 机器人'))
+    assert.match(card.textContent, /无需公网地址/); assert.match(card.textContent, /机器人/)
+    await clickEl(card)
+    assert.ok(field('botToken') && field('chatId') && field('parseMode'), 'fields rendered from schema')
+    assert.equal(field('parseMode').value, 'html', 'select defaults to its first option')
+    assert.ok(field('threadId'), 'showIf shows threadId for html')
+    assert.equal(document.querySelector('label[for="n2s-chf-botToken"]').textContent.includes('Bot Token'), true, 'labelled')
+    assert.equal(field('botToken').type, 'password')
+    const seg = [...modal().querySelectorAll('.n2s-seg button')].map((b) => b.textContent)
+    assert.deepEqual(seg, ['图片', '表格'], 'chart modes limited by capabilities.charts=image')
+    // required validation
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '保存'))
+    assert.equal(field('name').getAttribute('aria-invalid'), 'true'); assert.equal(field('botToken').getAttribute('aria-invalid'), 'true')
+    assert.ok(!rpcCalls.some((c) => c.method === 'saveChannel' && c.payload.type === 'telegram_bot'), 'not saved while invalid')
+    await setValue(field('chatId'), 'abc')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '保存'))
+    assert.match(modal().textContent, /格式不正确/)
+    await act(async () => { const sel = field('parseMode'); sel.value = 'plain'; sel.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle()
+    assert.ok(!field('threadId'), 'showIf hides threadId')
+    await setValue(field('name'), 'TG 数据')
+    await setValue(field('botToken'), '123:abc')
+    // target picker with unsaved credentials
+    await click('选择群聊', modal())
+    const lt = rpcCalls.filter((c) => c.method === 'listChannelTargets').pop().payload
+    assert.deepEqual(lt, { type: 'telegram_bot', config: { chatId: 'abc', parseMode: 'plain' }, secrets: { botToken: '123:abc' } })
+    await click('Ops group', modal())
+    assert.equal(field('chatId').value, '-100777')
+    // bot section
+    await clickEl([...modal().querySelectorAll('input[role=switch]')].find((i) => i.closest('.n2s-botbox')))
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '保存并发送测试'), 40)
+    const save = rpcCalls.filter((c) => c.method === 'saveChannel').pop().payload
+    assert.deepEqual(save, { name: 'TG 数据', type: 'telegram_bot', description: '', isDefault: false, chartMode: 'image', config: { chatId: '-100777', parseMode: 'plain' }, secrets: { botToken: '123:abc' }, bot: { enabled: true, allowP2p: true, sessionScope: 'chat' } })
+    assert.equal(rpcCalls.filter((c) => c.method === 'testChannel').pop().payload.id, 'ch9')
+    assert.ok(!modal(), 'closed'); assert.match(document.body.textContent, /测试成功 · @data_bot/)
+  })
+
+  await test('渠道 (new host): server ChannelError is shown on the field; Escape closes', async () => {
+    const saveBefore = responses.saveChannel
+    responses.saveChannel = undefined
+    const origFetch = global.fetch
+    global.fetch = async (url, init) => { const b = JSON.parse(init.body); if (b.method === 'saveChannel') { rpcCalls.push(b); return { status: 200, json: async () => ({ ok: false, error: { code: 'channel/auth', message: 'Bot Token 无效（401）' } }) } } return origFetch(url, init) }
+    await menu('「TG 运营」的操作', '编辑')
+    assert.equal(field('botToken').placeholder, '已设置，留空不修改')
+    await setValue(field('botToken'), 'bad')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '保存'), 40)
+    assert.equal(field('botToken').getAttribute('aria-invalid'), 'true')
+    assert.match(modal().textContent, /Bot Token 无效/)
+    global.fetch = origFetch; responses.saveChannel = saveBefore
+    await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) }); await settle()
+    assert.ok(!modal(), 'Escape closes the dialog')
+  })
+
+  await test('渠道 (new host): edit without changes sends no secret; DingTalk webhook tables only', async () => {
+    await menu('「钉钉群」的操作', '编辑')
+    assert.deepEqual([...modal().querySelectorAll('.n2s-seg button')].map((b) => b.textContent), ['表格'])
+    assert.match(modal().textContent, /该渠道只能发送表格/)
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '测试连接'), 40)
+    assert.equal(rpcCalls.filter((c) => c.method === 'testChannel').pop().payload.id, 'ch4')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '保存'), 40)
+    const save = rpcCalls.filter((c) => c.method === 'saveChannel').pop().payload
+    assert.deepEqual(save.secrets, {}); assert.equal(save.chartMode, 'table'); assert.equal(save.id, 'ch4')
+  })
+
+  await test('send dialog (new host): platform mark and chart modes follow the channel', async () => {
+    const sd = document.body.appendChild(document.createElement('div'))
+    await act(async () => { createRoot(sd).render(React.createElement(regs['conversation.chat.assistant-actions:nl2sql-send'], { messageId: 'm2', sessionId: 's1' })) }); await settle(40)
+    await clickEl(sd.querySelector('.n2s-reply-send'), 60)
+    const sel = document.getElementById('n2s-send-channel')
+    assert.ok(sel.closest('.n2s-chpick').querySelector('.n2s-pmark'), 'platform mark')
+    assert.match([...sel.options].map((o) => o.textContent).join('|'), /钉钉群 · 钉钉 · 自定义机器人/)
+    await act(async () => { sel.value = 'ch4'; sel.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle()
+    const segs = () => [...modal().querySelectorAll('.n2s-seg[aria-label="图表形式"] button')].map((b) => b.textContent)
+    assert.deepEqual(segs(), ['跟随渠道', '表格'])
+    await act(async () => { sel.value = 'ch2'; sel.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle()
+    assert.deepEqual(segs(), ['跟随渠道', '原生图表', '图片', '表格'], 'Lark app bot: native charts or PNG')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '取消'))
+  })
+
+  await test('成员与权限 (new host): bot overview toggles call saveBot; links to bot settings', async () => {
+    await openAdmin('成员与权限')
+    const rows = [...document.querySelectorAll('[data-bot]')].map((r) => r.getAttribute('data-bot'))
+    assert.deepEqual(rows, ['ch2', 'ch5'])
+    assert.match(document.querySelector('[data-bot="ch2"]').textContent, /DataBot/); assert.match(document.querySelector('[data-bot="ch2"]').textContent, /已连接/)
+    await clickEl(document.querySelector('input[aria-label="启用「TG 运营」的机器人"]'), 40)
+    assert.deepEqual(rpcCalls.filter((c) => c.method === 'saveBot').pop().payload, { channelId: 'ch5', enabled: true })
+    await click('最近对话 1', document.querySelector('[data-bot="ch2"]'))
+    assert.match(text(), /昨天 GMV/)
+    assert.match(text(), /未登记的用户： 允许，只读/)
+    await click('机器人设置', document.querySelector('[data-bot="ch2"]'))
+    assert.ok(modal()?.querySelector('.n2s-botbox.focus'), 'channel editor opened at bot section')
+    await click('取消', modal())
+  })
+
+  await test('成员与权限 (new host): identity chips; editor produces identities in saveUser', async () => {
+    await openAdmin('成员与权限')
+    const chips = [...document.querySelectorAll('.n2s-idchip')].map((c) => c.textContent)
+    assert.deepEqual(chips, ['飞ou_1', 'TG42', '飞ou_legacy'], 'new identities and legacy larkOpenId')
+    await click('+ 添加成员')
+    const form = document.querySelector('.n2s-card')
+    await setValue(form.querySelector('input'), '王五')
+    const platformSel = form.querySelector('select[aria-label="身份 1 的平台"]')
+    assert.deepEqual([...platformSel.options].map((o) => o.value), ['lark', 'telegram'], 'only bot-capable platforms')
+    await act(async () => { platformSel.value = 'telegram'; platformSel.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle()
+    assert.match(form.textContent, /@userinfobot/, 'per-platform help')
+    await setValue(form.querySelector('input[aria-label="身份 1 的 ID"]'), ' 777 ')
+    await click('+ 添加身份', form)
+    const p2 = form.querySelector('select[aria-label="身份 2 的平台"]')
+    await act(async () => { p2.value = 'lark'; p2.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle()
+    await setValue(form.querySelector('input[aria-label="身份 2 的 ID"]'), 'ou_5')
+    await setValue(form.querySelector('input[aria-label="身份 2 的邮箱（可选）"]'), 'w@x.com')
+    await click('保存', form); await settle(30)
+    const su = rpcCalls.filter((c) => c.method === 'saveUser').pop().payload
+    assert.deepEqual(su.identities, [{ platform: 'telegram', id: '777' }, { platform: 'lark', id: 'ou_5', email: 'w@x.com' }])
+    assert.equal(su.larkOpenId, 'ou_5'); assert.equal(su.email, 'w@x.com'); assert.equal(su.kind, 'person'); assert.equal(su.role, 'analyst')
+  })
+
+  await test('设置 (new host): 渠道与机器人 group uses botDefaultRole, default channel, bot summary', async () => {
+    await openAdmin('设置')
+    await click('渠道与机器人')
+    assert.equal(document.getElementById('set-defchannel').value, 'ch1')
+    assert.match(text(), /飞书1 \/ 1 个已启用/); assert.match(text(), /Telegram0 \/ 1 个已启用/)
+    const radio = [...document.querySelectorAll('.n2s-radio')].find((r) => r.textContent.includes('允许，分析师')).querySelector('input')
+    await clickEl(radio)
+    await clickEl([...document.querySelectorAll('.n2s-savebar button')].find((b) => b.textContent.includes('保存')), 40)
+    assert.deepEqual(rpcCalls.filter((c) => c.method === 'saveSettings').pop().payload, { botDefaultRole: 'analyst' })
+    const sel = document.getElementById('set-defchannel')
+    await act(async () => { sel.value = 'ch5'; sel.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle(40)
+    const save = rpcCalls.filter((c) => c.method === 'saveChannel').pop().payload
+    assert.equal(save.id, 'ch5'); assert.equal(save.isDefault, true); assert.deepEqual(save.secrets, {}); assert.deepEqual(save.config, { chatId: '-1001' })
   })
 
   await test('no React / window errors', () => {
