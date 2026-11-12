@@ -22,6 +22,7 @@
       const [drafts, setDrafts] = useState(null)
       const noteKeys = useMemo(() => (schema.value?.tables ?? []).flatMap(tb => [tb.name, ...tb.columns.map(c => `${tb.name}.${c.name}`)]), [schema.value])
       const allDatasources = useStore(s2 => s2.datasources)
+      const sgCount = useAsync(() => (ds ? call('suggestionCount', { datasourceId: ds.id }) : null), [ds?.id, kb.value])
       if (!ds) return null
       const k = kb.value ?? { glossary: [], metrics: [], notes: {}, examples: [] }
       const save = async (kind, item) => {
@@ -42,7 +43,7 @@
       function renderEditor({ kind, item }) {
         return h(KnowledgeEditor, { key: JSON.stringify(item?.id ?? item?.key ?? 'new'), kind, item, t, fields: FIELDS[kind], schema: schema.value, noteKeys, onCancel: () => setEditing(null), onSave: (form) => save(kind, form) })
       }
-      const sections = [['glossary', 'kb.glossary', k.glossary.length], ['metric', 'kb.metrics', k.metrics.length], ['note', 'kb.notes', Object.keys(k.notes).length], ['example', 'kb.examples', k.examples.length], ['eval', 'ev.section', null], ['feedback', 'fb.section', null]]
+      const sections = [['glossary', 'kb.glossary', k.glossary.length], ['metric', 'kb.metrics', k.metrics.length], ['note', 'kb.notes', Object.keys(k.notes).length], ['example', 'kb.examples', k.examples.length], ['suggest', 'sg.section', sgCount.value?.count ?? 0], ['eval', 'ev.section', null], ['feedback', 'fb.section', null]]
       const empty = (text) => h('div', { className: 'n2s-empty' }, h('div', null, text), h('button', { type: 'button', className: 'n2s-btn primary', onClick: () => setEditing({ kind: section, item: section === 'note' ? { key: '', text: '' } : {} }) }, t('kb.add')))
       const item = (key, title, sub, kind, data, extra) => h('div', { key, className: 'n2s-list2-row n2s-kbrow', style: { alignItems: 'flex-start' } },
         h('div', { className: 'n2s-grow', style: { minWidth: 0 } }, h('div', { className: 'n2s-list2-title', style: { whiteSpace: 'normal' } }, title), h('div', { className: 'n2s-kbsub' }, sub)),
@@ -72,9 +73,9 @@
       return h('div', null,
         h(SectionHead, { title: t('tab.knowledge'), desc: t('kb.hint') },
           h(KnowledgeIO, { t, ds, datasources: allDatasources, onImported: () => kb.reload() }),
-          section !== 'feedback' && section !== 'eval' && h('button', { type: 'button', className: 'n2s-btn primary', onClick: () => setEditing({ kind: section, item: section === 'note' ? { key: '', text: '' } : {} }) }, '+ ', t('kb.add'))),
+          section !== 'feedback' && section !== 'eval' && section !== 'suggest' && h('button', { type: 'button', className: 'n2s-btn primary', onClick: () => setEditing({ kind: section, item: section === 'note' ? { key: '', text: '' } : {} }) }, '+ ', t('kb.add'))),
         h('div', { className: 'n2s-subtabs', role: 'tablist' }, sections.map(([key, label, count]) => h('button', { key, type: 'button', role: 'tab', 'aria-selected': section === key, onClick: () => { setSection(key); setEditing(null) } }, t(label), count === null ? null : h('span', { className: 'count' }, count)))),
         error && h('div', { className: 'n2s-notice err', style: { marginBottom: 10 } }, error),
         editing && h('div', { style: { marginBottom: 12 } }, renderEditor(editing)),
-        section === 'feedback' ? h(FeedbackSection, { t, ds }) : section === 'eval' ? h(EvalSection, { t, ds }) : listWrap(list))
+        section === 'suggest' ? h(SuggestionsSection, { t, ds, fields: FIELDS, schema: schema.value, noteKeys, onChanged: () => kb.reload() }) : section === 'feedback' ? h(FeedbackSection, { t, ds }) : section === 'eval' ? h(EvalSection, { t, ds }) : listWrap(list))
     }
