@@ -9,6 +9,20 @@
     /** Current UI language ('zh' | 'en'), updated by the page/tool views on render. */
     let uiLang = 'zh'
     // LocaleSnapshot is { active, locales, revision } (dsh-client-locale); older hosts passed a string.
+    /**
+     * Extension points for feature files (client-src/2x-*.js). Each feature calls
+     * `extend.<point>.push(...)` at module evaluation:
+     *   adminSections: { id, label: (t) => string, icon: () => node, Component({ t, ds, datasources, onNavigate }) }
+     *   dashboardMenu: (ctx: { t, boardId, widgets, filters }) => [Dropdown items]
+     *   dashboardBar:  Component({ t, boardId, widgets, filters }) rendered next to the dashboard actions
+     *   resultMenu:    (ctx: { t, result }) => [Dropdown items]
+     *   resultPanels:  Component({ t, result }) rendered under a result (e.g. forecast, freshness note)
+     *   schemaPanels:  Component({ t, ds, schema, selected }) rendered above the table list
+     *   askPanels:     Component({ t, ds }) rendered on the Ask page under the composer
+     */
+    const extend = { adminSections: [], dashboardMenu: [], dashboardBar: [], resultMenu: [], resultPanels: [], schemaPanels: [], askPanels: [] }
+    const extItems = (list, arg) => list.flatMap(f => { try { return f(arg) ?? [] } catch (e) { console.warn('nl2sql ext', e); return [] } })
+
     /** Join a list for display in the UI language: 「a、b」 / "a, b". */
     const joinList = (items, sep) => (items ?? []).filter(x => x !== undefined && x !== null && x !== '').join(sep ?? (uiLang === 'zh' ? '、' : ', '))
     /** Label + colon in the UI language: 「标签：」 / "Label: ". */

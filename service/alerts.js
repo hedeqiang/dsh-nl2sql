@@ -221,6 +221,14 @@ export const methods = {
           ran.push({ id: a.id, ok: false, error: error.message })
         }
       }))
+      // Jobs registered by other modules (digest, reconciliation, freshness, quality, goals…):
+      // service.schedulerJobs() returns [{ id, due(now: Date) -> boolean, run() -> Promise }].
+      for (const job of (typeof this.schedulerJobs === 'function' ? this.schedulerJobs(now) : [])) {
+        let isDue = false
+        try { isDue = Boolean(job.due(now)) } catch {}
+        if (!isDue) continue
+        try { await this.withJobLock(`job:${job.id}`, () => job.run()); ran.push({ id: job.id, ok: true }) } catch (error) { if (error.code !== 'nl2sql/busy') ran.push({ id: job.id, ok: false, error: error.message }) }
+      }
       // Daily schema watch (catches up once after downtime).
       const at = this.state.settings.schemaCheckDaily
       if (at) {

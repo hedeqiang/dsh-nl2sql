@@ -288,6 +288,7 @@
         isChart && chartInstance && { label: t('result.png'), icon: Icon.download(14), onClick: exportPng },
         !hidden && { divider: true },
         !hidden && { label: savedExample ? t('kb.exampleSaved') : t('kb.saveExample'), icon: Icon.spark(14), disabled: savedExample || savingExample, onClick: saveExample },
+        ...extItems(extend.resultMenu, { t, result }),
       ]
       const chartPicker = result.rows.length > 0 && h(Dropdown, {
         label: t('result.chartType'),
@@ -305,6 +306,7 @@
           h('span', { className: 'n2s-grow' }),
           chartPicker),
         body,
+        ...extend.resultPanels.map((C, k) => h(C, { key: `rp${k}`, t, result })),
         h('div', { className: 'n2s-result-foot' },
           !hideSql && h('button', { type: 'button', className: 'n2s-btn small ghost', 'aria-expanded': showSql, onClick: () => setShowSql(v => !v) }, Icon.code(14), t('result.sql')),
           isChart && result.rows.length > 0 && !compact && h('button', { type: 'button', className: 'n2s-btn small ghost', 'aria-expanded': showTable, onClick: () => setShowTable(v => !v) }, Icon.table(14), t('result.data')),

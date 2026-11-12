@@ -25,6 +25,7 @@ import { methods as m8 } from './service/alerts.js'
 import { methods as m9 } from './service/uploads.js'
 import { methods as m10 } from './service/admin.js'
 import { methods as mSuggest } from './service/suggestions.js'
+import { FEATURES } from './service/features.js'
 const { CHART_TYPES, DEFAULT_SETTINGS, RECORD_KINDS, RPC_PATH, Records, UserError, newId, pick, toUserError } = shared
 
 export const name = 'nl2sql'
@@ -124,6 +125,16 @@ class Nl2SqlService {
     return this.writing
   }
 
+  /**
+   * Scheduler jobs contributed by feature modules: every prototype method named
+   * `jobs_<feature>(now)` returns an array of { id, due(now), run() }.
+   */
+  schedulerJobs(now) {
+    const out = []
+    for (const k of Object.getOwnPropertyNames(Nl2SqlService.prototype)) if (k.startsWith('jobs_')) { try { out.push(...(this[k](now) ?? [])) } catch (error) { console.warn('nl2sql: %s failed: %s', k, error.message) } }
+    return out
+  }
+
   async dispose() {
     this.disposed = true
     if (this.alertTimer) clearInterval(this.alertTimer)
@@ -145,7 +156,7 @@ class Nl2SqlService {
   }
 
 }
-for (const m of [m0, m1, m2, m3, m4, m5, mChannels, m6, m7, m8, m9, m10, mSuggest]) Object.defineProperties(Nl2SqlService.prototype, Object.getOwnPropertyDescriptors(m))
+for (const m of [m0, m1, m2, m3, m4, m5, mChannels, m6, m7, m8, m9, m10, mSuggest, ...FEATURES.map(f => f.methods)]) Object.defineProperties(Nl2SqlService.prototype, Object.getOwnPropertyDescriptors(m))
 const DATASOURCE_PARAM = { type: 'string', description: 'Data source id or name. Omit to use the one bound to this session.' }
 
 function textBlock(text) {
@@ -428,6 +439,8 @@ function displayMeta(result) {
 
 function registerRpc(ctx, service) {
   const methods = {
+    // Feature modules (service/features.js) contribute RPCs as rpc(service) → { name: fn }.
+    ...Object.assign({}, ...FEATURES.map(f => f.rpc?.(service) ?? {})),
     listDatasources: () => service.listDatasources(),
     saveDatasource: (p) => service.saveDatasource(p),
     deleteDatasource: (p) => service.deleteDatasource(p.id),
@@ -591,6 +604,9 @@ export async function apply(ctx, config) {
   service.startBots().catch(error => console.warn('nl2sql bot: start failed: %s', error.message))
   service.scheduleAlerts()
   registerAnalysisTools(ctx, service)
+  // Feature modules register their own agent tools: tools(ctx, service, helpers).
+  for (const f of FEATURES) f.tools?.(ctx, service, { displayMeta, textBlock, DATASOURCE_PARAM })
+  for (const f of FEATURES) f.start?.(ctx, service)
 }
 
 function registerAnalysisTools(ctx, service) {

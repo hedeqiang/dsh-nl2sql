@@ -157,7 +157,9 @@
             h(Dropdown, { label: t('dash.export'), trigger: { className: 'n2s-btn small ghost', content: h(React.Fragment, null, Icon.download(13), h('span', { className: 'n2s-hide-narrow' }, t('dash.export')), Icon.chev(10)) }, items: [
               { label: t('result.excel'), icon: Icon.download(14), onClick: () => exportExcel({ dashboardId: boards.value?.current }) },
               { label: t('dash.snapshot'), icon: Icon.pin(14), onClick: async () => { try { const s = await call('snapshotDashboard', { dashboardId: boards.value?.current }); notify(fmt(t, 'dash.snapshotDone', { n: s.widgets.length }), 'ok') } catch (e) { notifyError(e) } } },
+              ...extItems(extend.dashboardMenu, { t, boardId: boards.value?.current, widgets, filters: filters ?? [] }),
             ] }),
+            ...extend.dashboardBar.map((C, i) => h(C, { key: `x${i}`, t, boardId: boards.value?.current, widgets, filters: filters ?? [] })),
             h(Dropdown, { label: t('dash.auto'), trigger: { className: 'n2s-btn small ghost', content: h(React.Fragment, null, Icon.refresh(13), h('span', { className: 'n2s-hide-narrow' }, auto ? fmt(t, 'dash.autoEvery', { min: auto / 60 }) : t('dash.autoShort')), Icon.chev(10)) },
               items: [0, 60, 300, 900].map(v => ({ label: v === 0 ? t('dash.autoOff') : fmt(t, 'dash.autoEvery', { min: v / 60 }), checked: auto === v, onClick: () => setAuto(v) })) }),
             h('button', { type: 'button', className: 'n2s-btn small', onClick: () => setTick(x => x + 1) }, t('dash.refresh')),

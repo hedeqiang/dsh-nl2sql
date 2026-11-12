@@ -5,7 +5,9 @@
     // where the user was.
 
     const PRIMARY_TABS = ['ask', 'dashboard', 'schema', 'knowledge', 'history']
-    const ADMIN_SECTIONS = ['sources', 'members', 'automation', 'push', 'settings']
+    const BASE_ADMIN_SECTIONS = ['sources', 'members', 'automation', 'push', 'settings']
+    // Feature sections (extend.adminSections) go before 设置.
+    const adminSections = () => [...BASE_ADMIN_SECTIONS.slice(0, -1), ...extend.adminSections.map(x => x.id), 'settings']
     const NAV_KEY = 'nl2sql:nav'
 
     function loadNav() {
@@ -29,9 +31,9 @@
       const autoSub = sub === 'reports' ? 'reports' : 'alerts'
       return h('div', { className: 'n2s-admin' },
         h('nav', { className: 'n2s-adminnav', 'aria-label': t('tab.admin') },
-          ADMIN_SECTIONS.map(k => h('button', { key: k, type: 'button', className: 'n2s-adminnav-item', 'aria-current': section === k ? 'page' : undefined, onClick: () => onNavigate({ section: k, sub: null }) },
-            h('span', { className: 'ico', 'aria-hidden': true }, AdminIcons[k]()),
-            h('span', { className: 'n2s-grow' }, t(`admin.${k}`)),
+          adminSections().map(k => h('button', { key: k, type: 'button', className: 'n2s-adminnav-item', 'aria-current': section === k ? 'page' : undefined, onClick: () => onNavigate({ section: k, sub: null }) },
+            h('span', { className: 'ico', 'aria-hidden': true }, (AdminIcons[k] ?? extend.adminSections.find(x => x.id === k)?.icon ?? (() => Icon.chart(15)))()),
+            h('span', { className: 'n2s-grow' }, extend.adminSections.find(x => x.id === k)?.label(t) ?? t(`admin.${k}`)),
             k === 'automation' && firing > 0 ? h('span', { className: 'n2s-navbadge err', title: t('al.firing') }, firing) : badge[k] ? h('span', { className: 'n2s-navbadge' }, badge[k]) : null))),
         h('div', { className: 'n2s-adminbody' },
           section === 'sources' ? h(SourcesTab, { t, datasources }) :
@@ -43,6 +45,7 @@
                 k === 'reports' && reports?.length ? h('span', { className: 'n2s-faint', style: { marginLeft: 6 } }, reports.length) : null))),
             autoSub === 'alerts' ? h(AlertsTab, { t, ds, datasources }) : h(ReportsTab, { t, ds, datasources, onOpenSession: (id) => ctx.uiWorkspace.openSession(id), onOpenSchedules: () => ctx.layout.selectPanel('schedules') })) :
           section === 'push' ? h(PushTab, { t }) :
+          extend.adminSections.some(x => x.id === section) ? h(extend.adminSections.find(x => x.id === section).Component, { t, ds, datasources, onNavigate }) :
           h(SettingsPage, { t, datasources, onNavigate })))
     }
 
@@ -123,7 +126,7 @@
                 nav.tab === 'knowledge' ? h(KnowledgeTab, { key: `kb:${ds?.id ?? ''}`, t, ds }) :
                 nav.tab === 'history' ? h(HistoryTab, { t, datasources, onOpenSession: (id) => ctx.uiWorkspace.openSession(id) }) :
                 nav.tab === 'dashboard' ? h(DashboardTab, { t, ds, datasources }) :
-                h(AdminArea, { t, ctx, section: ADMIN_SECTIONS.includes(nav.section) ? nav.section : 'sources', sub: nav.sub, onNavigate: guardedNav, ds, datasources })))))
+                h(AdminArea, { t, ctx, section: adminSections().includes(nav.section) ? nav.section : 'sources', sub: nav.sub, onNavigate: guardedNav, ds, datasources })))))
       }
     }
 

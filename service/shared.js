@@ -422,3 +422,16 @@ export function fmtNum(v) {
   return Number.isInteger(n) ? n.toLocaleString('en-US') : n.toFixed(2)
 }
 
+
+/**
+ * Daily slot helper for scheduler jobs: the most recent local `HH:MM` slot at or
+ * before `now` (yesterday's when today's is still ahead). A job is due when its
+ * last run is older than that slot (catches up once after downtime).
+ */
+export function lastDailySlot(hhmm, now = new Date()) {
+  const [hh, mm] = String(hhmm || '09:00').split(':').map(Number)
+  const slot = new Date(now)
+  slot.setHours(hh || 0, mm || 0, 0, 0)
+  if (slot > now) slot.setDate(slot.getDate() - 1)
+  return slot.getTime()
+}

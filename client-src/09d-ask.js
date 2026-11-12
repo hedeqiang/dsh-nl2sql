@@ -91,6 +91,7 @@
       const tableCount = ds?.tableCount ?? data?.tableCount
       return h('div', null,
         h(Onboarding, { t, ds, onNavigate, onAsk, examples }),
+        ...extend.askPanels.map((C, k) => h(C, { key: `ap${k}`, t, ds, onAsk, onNavigate })),
         h('div', { className: 'n2s-hero' },
           h('h2', null, t('ask.heroTitle')),
           h('p', null, ds ? (ds.schemaAnalyzedAt ? (tableCount ? fmt(t, 'ask.heroSub', { name: ds.name, tables: tableCount }) : fmt(t, 'ask.heroSubShort', { name: ds.name })) : fmt(t, 'ask.heroSubNoSchema', { name: ds.name })) : t('ask.hint'))),

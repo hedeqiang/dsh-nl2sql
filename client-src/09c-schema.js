@@ -42,6 +42,7 @@
       const rels2 = tbl ? schema.relations.filter(r => r.from.table === tbl.name || r.to.table === tbl.name) : []
       const keyIcon = (c) => c.key === 'PRI' ? h('span', { className: 'n2s-colkey pk', title: 'PRIMARY KEY' }, 'PK') : c.key === 'UNI' ? h('span', { className: 'n2s-colkey', title: 'UNIQUE' }, 'UQ') : c.key === 'MUL' ? h('span', { className: 'n2s-colkey', title: 'INDEX' }, 'IX') : null
       return h('div', null,
+        schema && extend.schemaPanels.map((C, k) => h(C, { key: `sp${k}`, t, ds, schema, selected })),
         h('div', { className: 'n2s-toolbar' },
           schema && h('span', { className: 'n2s-muted n2s-small' }, fmt(t, 'schema.tables', { count: schema.tables.length }), ' · ', fmt(t, 'schema.relations', { count: schema.relations.length }), ' · ', fmt(t, 'schema.analyzedAt', { time: new Date(schema.analyzedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })),
           h('span', { className: 'n2s-grow' }),
