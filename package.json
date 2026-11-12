@@ -1,7 +1,7 @@
 {
   "name": "@hedeqiang/dsh-nl2sql",
-  "version": "0.10.0",
-  "description": "Data Q&A (NL2SQL) for DeepSeek Harness: ask MySQL / PostgreSQL / Elasticsearch / CSV in plain language, charts, dashboards, alerts, Lark push and bot, access control.",
+  "version": "0.11.0",
+  "description": "Data Q&A (NL2SQL) for DeepSeek Harness: ask MySQL / PostgreSQL / Elasticsearch / CSV in plain language, charts, dashboards, alerts, IM push and bots (Lark/Feishu, Telegram, WeCom, DingTalk), access control.",
   "type": "module",
   "exports": {
     ".": "./index.js",
@@ -31,7 +31,8 @@
     "README.md",
     "README.en.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/CHANNELS.md"
   ],
   "dependencies": {
     "@larksuiteoapi/node-sdk": "1.76.0",
@@ -68,17 +69,20 @@
   "license": "MIT",
   "author": "hedeqiang <laravel_code@163.com>",
   "keywords": [
+    "bi",
     "deepseek-harness",
+    "dingtalk",
     "dsh",
     "dsh-bundle",
-    "nl2sql",
-    "text-to-sql",
-    "bi",
-    "mysql",
-    "postgresql",
     "elasticsearch",
+    "feishu",
     "lark",
-    "feishu"
+    "mysql",
+    "nl2sql",
+    "postgresql",
+    "telegram",
+    "text-to-sql",
+    "wecom"
   ],
   "engines": {
     "node": ">=24"

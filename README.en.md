@@ -12,7 +12,8 @@ An enterprise NL2SQL plugin for DeepSeek Harness: connect databases, ask in plai
 - **Drill-down and "why did it change":** split by a dimension, show rows, rank dimensions by their contribution to a change.
 - **Metric library and business knowledge:** glossary, governed metrics (`nl2sql_metric`), column notes, verified examples; import / export; accuracy evaluation against the examples.
 - **Dashboards:** multiple boards, global filters, drag-to-reorder, three widths, snapshots, Excel export.
-- **Automation:** Lark push (Markdown + native charts), scheduled reports, metric alerts (threshold / change / anomaly / missing), schema change detection, an @-mention bot over the Lark long connection.
+- **Channels:** Lark / Feishu, Telegram, WeCom and DingTalk through pluggable adapters ([docs/CHANNELS.md](docs/CHANNELS.md)); push Markdown and results (native charts, images or tables per platform), and @-mention bots that need no public URL.
+- **Automation:** scheduled reports, metric alerts (threshold / change / anomaly / missing), schema change detection.
 - **Safety:**
   - read-only admission with per-dialect lexing, read-only transactions, server-side timeouts, streamed truncation;
   - table / column access policies with masking, full-scan guard;
