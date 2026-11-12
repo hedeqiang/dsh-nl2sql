@@ -11,7 +11,8 @@
  * Secrets live in one credential record per channel: `nl2sql/ch-<id>`.
  */
 import { ChannelError } from '../channels/http.js'
-import { renderChartPng } from '../channels/message.js'
+import { needsAttachment, renderChartPng } from '../channels/message.js'
+import { writeXlsx } from '../xlsx.js'
 import { getAdapter, kindOf, listCatalog, loadAdapters, requireKind, secretKeys } from '../channels/index.js'
 import { UserError, newId, pick, requireText, upsert } from './shared.js'
 
@@ -292,7 +293,7 @@ export const methods = {
    * process' cache) or given inline; each is re-checked against privacy:
    * masked values stay masked because results are stored masked.
    */
-  async sendToChannel({ channelId, title, text, resultIds = [], results = [], includeSql = false, source = 'ui', sessionId, footer, chartMode, template, mentionAll }) {
+  async sendToChannel({ channelId, title, text, resultIds = [], results = [], includeSql = false, source = 'ui', sessionId, footer, chartMode, template, mentionAll, attachFull }) {
     await loadAdapters()
     const c = this.requireChannel(channelId)
     const resolved = []
@@ -319,15 +320,30 @@ export const methods = {
       ...(template ? { template } : {}),
       footer: footer ?? `数据问答 · ${new Date().toLocaleString('zh-CN', { hour12: false })}${resolved[0]?.datasourceName ? ` · ${resolved[0].datasourceName}` : ''}`,
     }
+    // Results with more rows than the message can show: attach the full data as Excel
+    // where the platform can send files (default on; per send `attachFull: false` to skip).
+    const caps = found.kind.capabilities ?? {}
+    const shown = caps.tableRows ?? 10
+    const wantAttach = attachFull ?? c.attachFull ?? true
+    if (caps.files && wantAttach) {
+      const idx = message.results.map((r, i) => (needsAttachment(r, shown) ? i : -1)).filter(i => i >= 0)
+      if (idx.length) {
+        const sheets = idx.map(i => ({ name: (message.results[i].title || `结果${i + 1}`).slice(0, 31), columns: message.results[i].columns, rows: message.results[i].rows }))
+        if (includeSql) sheets.push({ name: 'SQL', columns: [{ name: '结果', kind: 'text' }, { name: 'SQL', kind: 'text' }], rows: idx.map(i => [message.results[i].title ?? '', message.results[i].sql ?? '']) })
+        const buffer = writeXlsx(sheets, { creator: 'DeepSeek Harness 数据问答' })
+        const safe = String(message.title).replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60) || '数据'
+        message.attachment = { buffer, fileName: `${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`, resultIndexes: idx }
+      }
+    }
     const started = Date.now()
     try {
       if (c.needsSecret) throw new ChannelError('channel/config', `渠道「${c.name}」需要重新填写密钥后才能使用`)
       const sent = await found.kind.send(this.adapterChannel(c), await this.channelSecrets(c), message, { renderChartPng, logger: console, fetch: globalThis.fetch })
       c.lastSentAt = Date.now()
       delete c.lastError
-      this.recordDelivery({ channel: c, title: message.title, status: 'ok', results: resolved.length, images: sent?.images, source, sessionId, elapsedMs: Date.now() - started })
+      this.recordDelivery({ channel: c, title: message.title, status: 'ok', results: resolved.length, images: sent?.images, files: sent?.files, ...(sent?.warning ? { error: sent.warning } : {}), source, sessionId, elapsedMs: Date.now() - started })
       await this.save()
-      return { ok: true, channel: c.name, platform: c.platform, messageId: sent?.messageId ?? null, images: sent?.images ?? 0, results: resolved.length }
+      return { ok: true, channel: c.name, platform: c.platform, messageId: sent?.messageId ?? null, images: sent?.images ?? 0, files: sent?.files ?? 0, ...(sent?.warning ? { warning: sent.warning } : {}), results: resolved.length }
     } catch (error) {
       c.lastError = error.message
       this.recordDelivery({ channel: c, title: message.title, status: 'error', error: error.message, results: resolved.length, source, sessionId, elapsedMs: Date.now() - started })
@@ -336,8 +352,8 @@ export const methods = {
     }
   },
 
-  recordDelivery({ channel, title, status, error, results, images, source, sessionId, elapsedMs }) {
-    this.records.put('delivery', { id: newId('dl'), at: Date.now(), channelId: channel.id, channelName: channel.name, ...(channel.platform ? { platform: channel.platform } : {}), title, status, ...(error ? { error: String(error).slice(0, 500) } : {}), results, images: images ?? 0, source, sessionId: sessionId ?? null, elapsedMs })
+  recordDelivery({ channel, title, status, error, results, images, files, source, sessionId, elapsedMs }) {
+    this.records.put('delivery', { id: newId('dl'), at: Date.now(), channelId: channel.id, channelName: channel.name, ...(channel.platform ? { platform: channel.platform } : {}), title, status, ...(error ? { error: String(error).slice(0, 500) } : {}), results, images: images ?? 0, files: files ?? 0, source, sessionId: sessionId ?? null, elapsedMs })
   },
 
   listDeliveries(limit = 100) {

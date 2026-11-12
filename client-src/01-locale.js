@@ -1,6 +1,9 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'im.attachFull': "超过 {n} 行的结果附带完整数据 Excel",
+      'im.rowsLimit': "消息中每个结果最多显示 {n} 行，超出部分会注明；完整数据可在页面导出 Excel",
+      'im.sentFile': "已附带完整数据 Excel",
       "settings.botDefaultRole": "未登记的用户",
       "settings.larkDefaultRole": "未登记的用户",
       "ch.savedTestFailedMsg": "已保存，但测试失败：{msg}",
@@ -992,6 +995,9 @@
       'error.generic': '操作失败：{message}',
     }
     const en = {
+      'im.attachFull': "Attach full data as Excel for results over {n} rows",
+      'im.rowsLimit': "Messages show up to {n} rows per result and say when rows are omitted; export Excel on the page for full data",
+      'im.sentFile': "full data attached as Excel",
       "settings.botDefaultRole": "Unregistered users",
       "settings.larkDefaultRole": "Unregistered users",
       "ch.savedTestFailedMsg": "Saved, but the test failed: {msg}",

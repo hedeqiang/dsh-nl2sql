@@ -16,7 +16,7 @@
  */
 import { createHash, createHmac } from 'node:crypto'
 import { ChannelError, request } from './http.js'
-import { MD_TABLE, cellText, chartOption, chartable, dualAxis, kpiText, isKpi, num, parseMdTable, renderChartPng, resultMeta } from './message.js'
+import { MD_TABLE, cellText, chartOption, chartable, dualAxis, kpiText, isKpi, needsAttachment, num, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
 
 export { ChannelError, ChannelError as ImError, chartOption, chartable, dualAxis, renderChartPng }
 
@@ -677,6 +677,18 @@ async function uploadImage(channel, secrets, png) {
   return json.data.image_key
 }
 
+/** Upload a file (≤ 30 MB) for a file message; returns file_key. https://open.feishu.cn/document/server-docs/im-v1/file/create */
+async function uploadFile(channel, secrets, buf, fileName, fileType = 'xls') {
+  const token = await pushToken(channel, secrets)
+  const form = new FormData()
+  form.set('file_type', fileType)
+  form.set('file_name', fileName)
+  form.set('file', new Blob([buf], { type: 'application/octet-stream' }), fileName)
+  const { status, json } = await request(`${hostFor(channel)}/open-apis/im/v1/files`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form, timeoutMs: 60000, label: '飞书' })
+  if (json.code !== 0) throw larkPushError(json, status)
+  return json.data.file_key
+}
+
 // ===========================================================================
 // Cards (JSON 2.0)
 // ===========================================================================
@@ -687,6 +699,7 @@ function tableElement(result, maxRows) {
   const cols = result.columns.slice(0, 8)
   return {
     tag: 'table',
+    // page_size is 1..10 per the card spec; more rows are paged in the client.
     page_size: Math.min(10, Math.max(1, Math.min(maxRows, result.rows.length))),
     row_height: 'low',
     header_style: { background_style: 'grey', bold: true, text_size: 'normal' },
@@ -820,7 +833,7 @@ export function actionElement(spec) {
  * Build a JSON 2.0 card from an OutboundMessage.
  * Results may carry `imageKey` (uploaded PNG) and `actions` (ActionSpec; legacy name `cardActions`).
  */
-export function buildCard(message, { maxRows = 10, charts = true, actions = true } = {}) {
+export function buildCard(message, { maxRows = 50, charts = true, actions = true } = {}) {
   const elements = [...markdownElements(message.text)]
   let tables = elements.filter(e => e.tag === 'table').length
   let chartCount = 0
@@ -844,8 +857,12 @@ export function buildCard(message, { maxRows = 10, charts = true, actions = true
     } else if (tables < 5) {
       elements.push(tableElement(r, maxRows))
       tables++
+      const note = omittedNote(r, Math.min(maxRows, r.rows.length), { attached: Boolean(r.attached) })
+      if (note) elements.push({ tag: 'markdown', content: `<font color='grey'>${note}</font>`, text_size: 'notation' })
     } else {
       elements.push({ tag: 'markdown', content: r.rows.slice(0, 5).map(row => row.slice(0, 6).map(v => cellText(v)).join(' | ')).join('\n') })
+      const note = omittedNote(r, Math.min(5, r.rows.length), { attached: Boolean(r.attached) })
+      if (note) elements.push({ tag: 'markdown', content: `<font color='grey'>${note}</font>`, text_size: 'notation' })
     }
     const spec = r.actions ?? r.cardActions
     if (spec && actions) {
@@ -863,7 +880,7 @@ export function buildCard(message, { maxRows = 10, charts = true, actions = true
   }
   // Card bodies are limited to ~30 KB: shrink tables/charts until it fits.
   const size = Buffer.byteLength(JSON.stringify(card))
-  if (size > CARD_LIMIT && maxRows > 3) return buildCard(message, { maxRows: Math.max(3, Math.floor(maxRows / 2)), charts, actions })
+  if (size > CARD_LIMIT && maxRows > 5) return buildCard(message, { maxRows: Math.max(5, Math.floor(maxRows / 2)), charts, actions })
   if (size > CARD_LIMIT && charts) return buildCard(message, { maxRows, charts: false, actions })
   if (size > CARD_LIMIT) {
     card.body.elements = elements.filter(e => e.tag !== 'table')
@@ -915,6 +932,7 @@ export async function sendMessage(channel, secrets, message) {
     }
     results.push(r)
   }
+  if (channel.type === 'lark_app' && message.attachment?.buffer) for (let i = 0; i < results.length; i++) if (message.attachment.resultIndexes?.includes(i)) results[i] = { ...results[i], attached: true }
   const card = buildCard({ ...message, results }, { charts: message.chartMode !== 'image' && message.chartMode !== 'table' })
   if (channel.type === 'lark_webhook') {
     if (!secrets.webhookUrl) throw new ChannelError('im/config', '缺少 Webhook 地址')
@@ -944,7 +962,17 @@ export async function sendMessage(channel, secrets, message) {
     if (json.code !== 0 && !fatal.includes(json.code) && card.body.elements.some(e => e.tag === 'chart')) ({ status, json } = await send(buildCard({ ...message, results }, { charts: false })))
     if (json.code !== 0 && !fatal.includes(json.code)) ({ status, json } = await send(legacyCard(card)))
     if (json.code !== 0) throw larkPushError(json, status)
-    return { messageId: json.data?.message_id, images }
+    // Full data as an Excel file message after the card (app bots only; webhooks cannot send files).
+    let files = 0
+    if (message.attachment?.buffer) {
+      try {
+        const fileKey = await uploadFile(channel, secrets, message.attachment.buffer, message.attachment.fileName)
+        const fr = await postJson(url, { receive_id: channel.receiveId, msg_type: 'file', content: JSON.stringify({ file_key: fileKey }) }, { authorization: `Bearer ${token}` })
+        if (fr.json.code === 0) files++
+        else message.attachmentError = larkPushError(fr.json, fr.status).message
+      } catch (error) { message.attachmentError = error.message }
+    }
+    return { messageId: json.data?.message_id, images, files, ...(message.attachmentError ? { warning: `完整数据附件发送失败：${message.attachmentError}` } : {}) }
   }
   throw new ChannelError('im/config', `不支持的渠道类型：${channel.type}`)
 }
@@ -1104,7 +1132,7 @@ export const kinds = [
       { key: 'webhookUrl', label: { zh: 'Webhook 地址', en: 'Webhook URL' }, type: 'secret', secret: true, required: true, placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/…', pattern: WEBHOOK_RE.source },
       { key: 'signSecret', label: { zh: '签名密钥', en: 'Signing secret' }, type: 'secret', secret: true, help: { zh: '机器人开启「签名校验」时填写', en: 'Only when signature verification is enabled' } },
     ],
-    capabilities: { push: true, markdown: 'full', charts: 'native', chartModes: ['native', 'table'], tables: 'native', buttons: false, bot: false, listTargets: false, mentionAll: true, maxMessageBytes: 28000 },
+    capabilities: { push: true, markdown: 'full', charts: 'native', chartModes: ['native', 'table'], tables: 'native', tableRows: 50, files: false, buttons: false, bot: false, listTargets: false, mentionAll: true, maxMessageBytes: 28000 },
     setupSteps: WEBHOOK_SETUP,
     validate(input, existing) {
       const config = {}
@@ -1141,7 +1169,7 @@ export const kinds = [
       ] },
       { key: 'receiveId', label: { zh: '接收者 ID', en: 'Receiver ID' }, type: 'text', required: true, placeholder: 'oc_…', target: true, help: { zh: '推送目标；选择群时可点「列出群聊」', en: 'Push target; use "List chats" to pick a chat' } },
     ],
-    capabilities: { push: true, markdown: 'full', charts: 'native', chartImages: true, chartModes: ['native', 'image', 'table'], tables: 'native', buttons: true, bot: true, listTargets: true, mentionAll: true, maxMessageBytes: 28000 },
+    capabilities: { push: true, markdown: 'full', charts: 'native', chartImages: true, chartModes: ['native', 'image', 'table'], tables: 'native', tableRows: 50, files: true, buttons: true, bot: true, listTargets: true, mentionAll: true, maxMessageBytes: 28000 },
     setupSteps: APP_SETUP,
     validate(input, existing) {
       const c = input.config ?? {}

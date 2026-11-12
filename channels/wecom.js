@@ -522,7 +522,7 @@ const webhookKind = {
   fields: [
     { key: 'webhookUrl', type: 'secret', secret: true, required: true, label: { zh: 'Webhook 地址', en: 'Webhook URL' }, placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…', pattern: WEBHOOK_RE.source, help: { zh: '群聊 → 右上角 … → 消息推送 → 添加，复制 Webhook 地址', en: 'Group chat → … → Message push → Add, copy the webhook URL' } },
   ],
-  capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'markdown', buttons: false, bot: false, listTargets: false, mentionAll: true, maxMessageBytes: WEBHOOK_LIMIT },
+  capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'markdown', tableRows: 10, files: false, buttons: false, bot: false, listTargets: false, mentionAll: true, maxMessageBytes: WEBHOOK_LIMIT },
   setupSteps: {
     zh: [
       '在企业微信群聊中点击右上角「…」→「消息推送」（旧版为「群机器人」）→「添加」，创建后复制 Webhook 地址。',
@@ -553,7 +553,7 @@ const aibotKind = {
     { key: 'chatId', type: 'text', required: false, label: { zh: '推送目标会话 ID（可选）', en: 'Push target chat id (optional)' }, help: { zh: '群聊 chatid（来自机器人收到的消息）或成员 userid；会话需先给机器人发过消息', en: 'Group chatid (from a received message) or member userid; the chat must have messaged the bot first' } },
     { key: 'chatType', type: 'select', required: false, label: { zh: '会话类型', en: 'Chat type' }, options: [{ value: 'group', label: { zh: '群聊', en: 'Group' } }, { value: 'single', label: { zh: '单聊', en: 'Single' } }] },
   ],
-  capabilities: { push: true, markdown: 'full', charts: 'none', chartModes: ['table'], tables: 'markdown', buttons: false, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: AIBOT_LIMIT },
+  capabilities: { push: true, markdown: 'full', charts: 'none', chartModes: ['table'], tables: 'markdown', tableRows: 10, files: false, buttons: false, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: AIBOT_LIMIT },
   setupSteps: {
     zh: [
       '企业微信管理后台 → 应用管理 → 智能机器人 → 创建（或选择）机器人 → 开启「API 模式」并选择「长连接」。',

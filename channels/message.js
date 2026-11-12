@@ -42,6 +42,23 @@ export function isKpi(result) {
 }
 
 /** "12 行（已截断） · 已筛选：…" */
+/**
+ * One line telling the reader how much of a result the message shows, or ''
+ * when everything is shown. `attached` = a full-data file follows.
+ */
+export function omittedNote(result, shown, { attached = false } = {}) {
+  const total = result.rowCount ?? result.rows?.length ?? 0
+  if (shown >= total && !result.truncated) return ''
+  const base = shown < total ? `共 ${total} 行，消息中显示前 ${shown} 行` : `查询结果已按行数上限截断（${total} 行）`
+  return attached ? `${base}，完整数据见附件 Excel` : `${base}；完整数据可在数据问答页面查看或导出 Excel`
+}
+
+/** Results whose rows do not all fit in a message (candidates for a full-data attachment). */
+export function needsAttachment(result, shown) {
+  if (!result || result.error || !result.rows?.length) return false
+  return (result.rowCount ?? result.rows.length) > shown
+}
+
 export function resultMeta(result) {
   return `${result.rowCount ?? result.rows?.length ?? 0} 行${result.truncated ? '（已截断）' : ''}${result.filters?.length ? ` · 已筛选：${result.filters.map(f => f.description).join('；')}` : ''}`
 }
@@ -204,7 +221,7 @@ export function resultAsMarkdownTable(result, maxRows = 10, { maxCols = 8 } = {}
     ...rows.map(r => `| ${cols.map((c, i) => mdCell(c.kind === 'number' && Number.isFinite(Number(r[i])) && r[i] !== null && r[i] !== '' ? Number(r[i]).toLocaleString('en-US', { maximumFractionDigits: 4 }) : r[i])).join(' | ')} |`),
   ]
   const total = result.rowCount ?? result.rows?.length ?? 0
-  if (total > rows.length) lines.push('', `…共 ${total} 行，仅显示前 ${rows.length} 行`)
+  if (total > rows.length) lines.push('', `…共 ${total} 行，仅显示前 ${rows.length} 行${result.attached ? '，完整数据见附件 Excel' : ''}`)
   return lines.join('\n')
 }
 

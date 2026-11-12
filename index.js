@@ -310,6 +310,7 @@ function registerSendTool(ctx, service) {
         chartMode: { type: 'string', enum: ['native', 'image', 'table'], description: 'How attached results render: native card charts, PNG images, or tables. Omit to use the channel default; unsupported modes fall back to it.' },
         resultIds: { type: 'array', items: { type: 'string' }, description: 'resultIds from nl2sql_query / nl2sql_chart / nl2sql_overview to include.' },
         includeSql: { type: 'boolean', description: 'Also include each result\'s SQL.' },
+        attachFull: { type: 'boolean', description: 'Where the channel can send files (Lark app bot, Telegram), results with more rows than the message shows get the full data attached as an Excel file. Default true.' },
       },
       additionalProperties: false,
     },
@@ -318,7 +319,7 @@ function registerSendTool(ctx, service) {
     execute: async (args, exec) => {
       try {
         if (args.action === 'list') return { channels: service.listChannels().map(c => ({ ...pick(c, ['id', 'name', 'type', 'platform', 'description', 'isDefault']), ...(c.capabilities ? { capabilities: pick(c.capabilities, ['markdown', 'charts', 'tables', 'chartModes']) } : {}) })) }
-        return await service.sendToChannel({ channelId: args.channel, title: args.title, text: args.text, resultIds: args.resultIds ?? [], includeSql: args.includeSql, chartMode: args.chartMode, source: 'agent', sessionId: exec.agent?.id })
+        return await service.sendToChannel({ channelId: args.channel, title: args.title, text: args.text, resultIds: args.resultIds ?? [], includeSql: args.includeSql, attachFull: args.attachFull, chartMode: args.chartMode, source: 'agent', sessionId: exec.agent?.id })
       } catch (error) {
         throw error instanceof UserError ? new Error(error.message) : error
       }

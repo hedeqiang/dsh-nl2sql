@@ -159,7 +159,7 @@ export function resultAsDingText(r, maxRows = 10, maxCols = 6) {
   const cell = (c, v) => (c.kind === 'number' ? fmtNum(v) : cellText(v, 30)).replace(/\|/g, '｜')
   const out = [`**${cols.map(c => c.name).join(' ｜ ')}**`, '', ...rows.map((row, i) => `${i + 1}. ${cols.map((c, j) => cell(c, row[j])).join(' ｜ ')}`)]
   const total = r.rowCount ?? r.rows.length
-  if (total > rows.length) out.push('', `> 共 ${total} 行，仅显示前 ${rows.length} 行`)
+  if (total > rows.length) out.push('', `> 共 ${total} 行，仅显示前 ${rows.length} 行；完整数据可在数据问答页面查看或导出 Excel`)
   return out.join('\n')
 }
 
@@ -508,7 +508,7 @@ const webhookKind = {
     { key: 'webhookUrl', type: 'secret', secret: true, required: true, label: { zh: 'Webhook 地址', en: 'Webhook URL' }, placeholder: 'https://oapi.dingtalk.com/robot/send?access_token=…', pattern: WEBHOOK_RE.source, help: { zh: '群设置 → 机器人 → 添加机器人 → 自定义，完成后复制 Webhook', en: 'Group settings → Bots → Add → Custom, then copy the webhook' } },
     { key: 'signSecret', type: 'secret', secret: true, required: false, label: { zh: '加签密钥（可选）', en: 'Signing secret (optional)' }, placeholder: 'SEC…', help: { zh: '安全设置选择「加签」时显示的 SEC 开头字符串', en: 'The SEC… string shown when “Sign” is selected in security settings' } },
   ],
-  capabilities: { push: true, markdown: 'basic', charts: 'none', chartModes: ['table'], tables: 'text', buttons: false, bot: false, listTargets: false, mentionAll: true, maxMessageBytes: MD_LIMIT },
+  capabilities: { push: true, markdown: 'basic', charts: 'none', chartModes: ['table'], tables: 'text', tableRows: 10, files: false, buttons: false, bot: false, listTargets: false, mentionAll: true, maxMessageBytes: MD_LIMIT },
   setupSteps: {
     zh: [
       '在钉钉群：群设置 → 机器人 → 添加机器人 → 自定义（通过 Webhook 接入）。',
@@ -542,7 +542,7 @@ const appKind = {
     { key: 'openConversationId', type: 'text', required: false, label: { zh: '推送目标群（openConversationId，可选）', en: 'Push target group (openConversationId, optional)' }, placeholder: 'cid…', help: { zh: '机器人收到该群消息时的 conversationId（以 cid 开头）', en: 'The conversationId (cid…) seen in a message from that group' } },
     { key: 'userId', type: 'text', required: false, label: { zh: '推送目标成员 userId（可选）', en: 'Push target member userId (optional)' }, help: { zh: '未填群会话 ID 时，推送到该成员与机器人的单聊', en: 'Used when no group is set: pushes to the member’s chat with the bot' } },
   ],
-  capabilities: { push: true, markdown: 'basic', charts: 'none', chartModes: ['table'], tables: 'text', buttons: false, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: MD_LIMIT },
+  capabilities: { push: true, markdown: 'basic', charts: 'none', chartModes: ['table'], tables: 'text', tableRows: 10, files: false, buttons: false, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: MD_LIMIT },
   setupSteps: {
     zh: [
       '钉钉开发者后台（open-dev.dingtalk.com）→ 应用开发 → 企业内部应用 → 创建应用，记下 Client ID 与 Client Secret。',

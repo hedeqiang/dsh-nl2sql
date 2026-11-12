@@ -64,7 +64,7 @@ export const methods = {
   },
 
   /** Send the current dashboard (with saved global filters) to a channel. */
-  async sendDashboard({ channelId, title, filters, dashboardId, chartMode }) {
+  async sendDashboard({ channelId, title, filters, dashboardId, chartMode, attachFull }) {
     const results = []
     const d = dashboardId ? this.requireDashboard(dashboardId) : this.currentDashboardObj()
     for (const w of d.widgets.slice(0, 10)) {
@@ -76,7 +76,7 @@ export const methods = {
       }
     }
     if (!results.length) throw new UserError('nl2sql/invalid', '看板为空')
-    const sent = await this.sendToChannel({ channelId, title: title || d.name || '数据看板', results, source: 'dashboard', chartMode })
+    const sent = await this.sendToChannel({ channelId, title: title || d.name || '数据看板', results, source: 'dashboard', chartMode, attachFull })
     await this.saveDashboardSnapshot(d, results, 'push')
     return sent
   },

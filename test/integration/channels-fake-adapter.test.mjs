@@ -45,7 +45,7 @@ function makeKind(id, { buttons }) {
 registerAdapter({
   id: 'fakeim',
   name: { zh: '假 IM', en: 'Fake IM' },
-  kinds: [makeKind('fakeim_bot', { buttons: true }), makeKind('fakeim_plain', { buttons: false })],
+  kinds: [makeKind('fakeim_bot', { buttons: true }), makeKind('fakeim_plain', { buttons: false }), { ...makeKind('fakeim_files', { buttons: false }), capabilities: { push: true, markdown: 'basic', charts: 'image', tables: 'markdown', tableRows: 20, files: true, buttons: false, bot: false, listTargets: false } }],
   createBot(channel, secrets, handlers) {
     let state = 'idle'
     const bot = {
@@ -120,7 +120,7 @@ try {
     const cat = await call('channelCatalog')
     const p = cat.find(x => x.platform === 'fakeim')
     assert.ok(p)
-    assert.deepEqual(p.kinds.map(k => k.id), ['fakeim_bot', 'fakeim_plain'])
+    assert.deepEqual(p.kinds.map(k => k.id), ['fakeim_bot', 'fakeim_plain', 'fakeim_files'])
     assert.equal(p.kinds[0].fields.find(f => f.key === 'token').secret, true)
   })
 
@@ -257,6 +257,31 @@ try {
     assert.equal(plainBot.status().state, 'stopped')
     await call('deleteChannel', { id: plainCh.id })
     assert.equal((await call('botStatus')).some(b => b.channelId === plainCh.id), false)
+  })
+  await test('large results: full data attached as Excel where the kind can send files; not otherwise', async () => {
+    const r = await call('runQuery', { datasourceId: ds.id, sql: 'select id, chain_type, amount from blockchain_transactions order by id limit 60' })
+    assert.ok(r.rowCount > 20)
+    const filesCh = await call('saveChannel', { name: 'Files', type: 'fakeim_files', config: { chatId: 'g9' }, secrets: { token: 'f' } })
+    fake.sent.length = 0
+    const out = await call('sendToChannel', { channelId: filesCh.id, title: '明细 60 行', resultIds: [r.resultId] })
+    const msg = fake.sent.at(-1).message
+    assert.ok(Buffer.isBuffer(msg.attachment?.buffer) && msg.attachment.buffer.length > 100, 'xlsx built')
+    assert.match(msg.attachment.fileName, /\.xlsx$/)
+    assert.deepEqual(msg.attachment.resultIndexes, [0])
+    const { readXlsx } = await plugin('xlsx.js')
+    const sheets = readXlsx(msg.attachment.buffer)
+    assert.equal(sheets[0].rows.length - 1, r.rowCount, 'every row in the sheet (plus header)')
+    assert.equal(out.ok, true)
+    // per-send opt-out and kinds without files
+    fake.sent.length = 0
+    await call('sendToChannel', { channelId: filesCh.id, title: 'x', resultIds: [r.resultId], attachFull: false })
+    assert.equal(fake.sent.at(-1).message.attachment, undefined)
+    await call('sendToChannel', { channelId: ch.id, title: 'x', resultIds: [r.resultId] })
+    assert.equal(fake.sent.at(-1).message.attachment, undefined, 'kind without files: no attachment')
+    // small results are not attached
+    const small = await call('runQuery', { datasourceId: ds.id, sql: 'select chain_type, count(*) n from blockchain_transactions group by chain_type' })
+    await call('sendToChannel', { channelId: filesCh.id, title: 'small', resultIds: [small.resultId] })
+    assert.equal(fake.sent.at(-1).message.attachment, undefined)
   })
 } finally {
   await app.close()

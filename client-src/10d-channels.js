@@ -355,7 +355,7 @@
             h('td', { title: d.title }, d.title),
             h('td', { className: 'n2s-muted' }, tOpt(t, `im.src.${d.source}`) || d.source),
             h('td', { title: d.error ?? '' }, d.status === 'ok'
-              ? h('span', { className: 'n2s-statusdot ok' }, [t('im.sentOk'), d.results ? fmt(t, 'im.resultsN', { count: d.results }) : ''].filter(Boolean).join(' · '))
+              ? h('span', { className: 'n2s-statusdot ok' }, [t('im.sentOk'), d.results ? fmt(t, 'im.resultsN', { count: d.results }) : '', d.files ? t('im.sentFile') : '', d.error ? d.error : ''].filter(Boolean).join(' · '))
               : h('span', { className: 'n2s-statusdot err' }, d.error ?? t('im.lastFailed')))))))))
     }
 

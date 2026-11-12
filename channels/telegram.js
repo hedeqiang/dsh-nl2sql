@@ -280,7 +280,7 @@ export function inlineKeyboard(spec) {
 
 // ------------------------------------------------------------ rendering
 
-function resultMarkdown(r, { includeSql, maxRows = 10 } = {}) {
+function resultMarkdown(r, { includeSql, maxRows = 20 } = {}) {
   const head = `**${r.title || '查询结果'}**  ${resultMeta(r)}`
   if (r.error) return `${head}\n${r.error}`
   const lines = [head]
@@ -353,6 +353,16 @@ function createSender(api) {
     return msg?.message_id
   }
 
+  async function sendDocument(chatId, buf, fileName, { caption, threadId } = {}) {
+    const form = new FormData()
+    form.append('chat_id', String(chatId))
+    form.append('document', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName)
+    if (caption) form.append('caption', caption.slice(0, 1024))
+    if (threadId) form.append('message_thread_id', String(threadId))
+    const msg = await api.call('sendDocument', undefined, { form, timeoutMs: 60000 })
+    return msg?.message_id
+  }
+
   /** Deliver an OutboundMessage. Returns { messageId, images }. */
   async function deliver(chatId, message, { replyTo, threadId, renderChartPng = defaultRenderChartPng, logger, buttons = true } = {}) {
     let images = 0
@@ -376,10 +386,16 @@ function createSender(api) {
       messageId ??= id
       reply = undefined
     }
-    return { messageId: messageId === undefined ? undefined : String(messageId), images }
+    // Full data as an Excel document (Bot API sendDocument, ≤ 50 MB).
+    let files = 0
+    let warning
+    if (message.attachment?.buffer) {
+      try { await sendDocument(chatId, message.attachment.buffer, message.attachment.fileName, { caption: '完整数据', threadId }); files++ } catch (error) { warning = `完整数据附件发送失败：${error.message}` }
+    }
+    return { messageId: messageId === undefined ? undefined : String(messageId), images, files, ...(warning ? { warning } : {}) }
   }
 
-  return { sendText, sendPhoto, deliver }
+  return { sendText, sendPhoto, sendDocument, deliver }
 }
 
 // ------------------------------------------------------------ validate
@@ -627,7 +643,7 @@ const telegramBot = {
     { key: 'chatId', type: 'text', required: false, target: true, label: { zh: 'Chat ID（推送目标）', en: 'Chat ID (push target)' }, placeholder: '-1001234567890 / @mychannel', pattern: CHAT_RE.source, help: { zh: '群组/超级群为负数（通常以 -100 开头），公开频道可填 @用户名；仅作机器人使用时可留空', en: 'Negative number for groups (usually -100…), or @username for public channels; may be empty for bot-only use' } },
     { key: 'apiBase', type: 'url', required: false, label: { zh: 'API 地址（可选）', en: 'API base URL (optional)' }, placeholder: DEFAULT_API_BASE, help: { zh: '自建 Bot API 服务器或反向代理地址；留空使用官方 api.telegram.org', en: 'Self-hosted Bot API server or proxy; empty = api.telegram.org' } },
   ],
-  capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'text', buttons: true, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: TEXT_LIMIT },
+  capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'text', tableRows: 20, files: true, buttons: true, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: TEXT_LIMIT },
   setupSteps: {
     zh: [
       '在 Telegram 中打开 @BotFather，发送 /newbot 按提示创建机器人，复制 Bot Token。',
