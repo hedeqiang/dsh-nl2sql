@@ -94,11 +94,13 @@ export const methods = {
     let a = draft ? structuredClone(draft) : { ...found }
     const ds = this.requireDatasource(a.datasourceId)
     let result
+    // Chat-created alerts (service/subscriptions.js) run as their creator, re-resolved now.
+    const actor = a.chatTarget && this.chatAlertActor ? await this.chatAlertActor(a) : undefined
     if (a.source === 'metric') {
       const range = a.grain === 'hour' ? 'last7d' : a.grain === 'month' ? 'thisYear' : a.grain === 'week' ? 'last90d' : 'last30d'
-      result = await this.queryMetric({ datasourceId: ds.id, metric: a.metric, grain: a.grain, range, filters: a.filters, title: `告警 · ${a.name}`, source: 'alert' })
+      result = await this.queryMetric({ datasourceId: ds.id, metric: a.metric, grain: a.grain, range, filters: a.filters, title: `告警 · ${a.name}`, source: 'alert', actor })
     } else {
-      result = await this.runQuery({ sql: a.sql, datasourceId: ds.id, title: `告警 · ${a.name}`, source: 'alert', confirmScan: true })
+      result = await this.runQuery({ sql: a.sql, datasourceId: ds.id, title: `告警 · ${a.name}`, source: 'alert', confirmScan: true, actor })
     }
     // Series: first column = time/category, last numeric column = value.
     const vi = [...result.columns.keys()].reverse().find(i => result.columns[i].kind === 'number')
@@ -120,9 +122,12 @@ export const methods = {
         a.lastFiredAt = Date.now()
         const event = { id: newId('ae'), alertId: a.id, name: a.name, at: Date.now(), value: ev.value ?? null, message: ev.message, resultId: result.resultId }
         this.records.put('alertEvent', event)
-        if (a.channelId) {
+        if (a.channelId || (a.chatTarget && this.deliverAlertToChat)) {
           try {
-            await this.sendToChannel({ channelId: a.channelId, title: `⚠️ 数据告警：${a.name}`, text: `${a.mention ? '<at id=all></at> ' : ''}**${ev.message}**\n\n<font color='grey'>数据源：${ds.name} · 检查时间：${new Date().toLocaleString('zh-CN', { hour12: false })}</font>`, resultIds: [result.resultId], source: 'alert' })
+            // Optional extra Markdown from feature modules (e.g. change attribution, service/proactive.js).
+            const extra = await Promise.resolve(this.beforeAlertPush?.(a, result)).catch(() => null)
+            const msg = { channelId: a.channelId, title: `⚠️ 数据告警：${a.name}`, text: `${a.mention ? '<at id=all></at> ' : ''}**${ev.message}**${extra ? `\n\n${extra}` : ''}\n\n<font color='grey'>数据源：${ds.name} · 检查时间：${new Date().toLocaleString('zh-CN', { hour12: false })}</font>`, resultIds: [result.resultId], source: 'alert' }
+            if (a.chatTarget && this.deliverAlertToChat) await this.deliverAlertToChat(a, msg); else await this.sendToChannel(msg)
             pushed = true
             event.pushed = true
           } catch (error) {
@@ -133,8 +138,9 @@ export const methods = {
       }
     } else if (a.state === 'firing') {
       a.state = 'ok'
-      if (!dryRun && a.channelId && a.notifyRecovery !== false) {
-        try { await this.sendToChannel({ channelId: a.channelId, title: `✅ 告警恢复：${a.name}`, text: ev.message, source: 'alert' }) } catch {}
+      if (!dryRun && (a.channelId || a.chatTarget) && a.notifyRecovery !== false) {
+        const msg = { channelId: a.channelId, title: `✅ 告警恢复：${a.name}`, text: ev.message, source: 'alert' }
+        try { if (a.chatTarget && this.deliverAlertToChat) await this.deliverAlertToChat(a, msg); else await this.sendToChannel(msg) } catch {}
       }
     } else {
       a.state = 'ok'

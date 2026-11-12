@@ -14,7 +14,7 @@ import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, UserError, columnKind, fillChartHin
 export const methods = {
   // ---------------------------------------------------------------- query
 
-  async runQuery({ sql, datasourceId, sessionId, title, chart, source, confirmScan, filters, useCache, actor, governed }) {
+  async runQuery({ sql, datasourceId, sessionId, title, chart, source, confirmScan, filters, useCache, actor, governed, maxRows }) {
     actor ??= this.actorFor(sessionId)
     const ds = this.datasourceForSession(sessionId, datasourceId)
     this.assertAccess(actor, ds)
@@ -24,7 +24,8 @@ export const methods = {
       this.state.sessions[sessionId] = ds.id
       await this.save()
     }
-    const settings = this.settingsFor(ds)
+    // Optional per-call row cap (reconciliation loads up to 200k rows per side); invalid values are ignored.
+    const settings = { ...this.settingsFor(ds), ...(Number.isInteger(maxRows) && maxRows > 0 ? { maxRows: Math.min(maxRows, 200000) } : {}) }
     const dialect = ds.type ?? 'mysql'
     let admitted = admitSql(sql, { dialect })
     const policy = this.policyFor(ds)

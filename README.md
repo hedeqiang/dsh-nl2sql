@@ -24,6 +24,7 @@ English · [简体中文](README.zh-CN.md)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [IM channels and bots](#im-channels-and-bots)
+- [MCP server](#mcp-server)
 - [Security model](#security-model)
 - [Data and privacy](#data-and-privacy)
 - [Limitations](#limitations)
@@ -46,6 +47,17 @@ English · [简体中文](README.zh-CN.md)
 - Scheduled reports, metric alerts (threshold / change / anomaly / missing data) and schema change detection.
 - Push to Lark / Feishu, Telegram, WeCom and DingTalk; charts are sent as native card charts, images or tables depending on the platform, and large results come with the full data as an Excel attachment where the platform allows files.
 - Chat bots that answer @-mentions in group chats without a public URL (Lark long connection, Telegram long polling, WeCom AI bot long connection, DingTalk Stream mode).
+
+**Data finds people**
+- Data freshness: the latest timestamp of every table, stale-data warnings in answers and alerts when a table stops updating; a daily data-quality patrol with a health score.
+- Cross-source reconciliation: compare two queries on two data sources by key, list rows missing on either side and value differences; save as a daily job that pushes differences with an Excel attachment.
+- Chat subscriptions: "@bot send this to the group every day at 9" or "tell me when withdrawals exceed 500k" creates a subscription or alert delivered to that chat.
+- Daily digest with the notable changes and their main contributors, automatic attribution in alert messages, metric goals with progress and projection, and time-series forecasts.
+
+**Present and connect**
+- Export a dashboard or results to PowerPoint or one long image (also sendable to Lark / Telegram); presentation mode for wall screens with auto refresh and rotation.
+- Sync query results to Lark Bitable on a schedule.
+- MCP server: Claude Desktop, Cursor, VS Code and other MCP clients can use the same governed access (see [docs/mcp.md](docs/mcp.md)).
 
 **Govern**
 - Read-only by construction, table / column access policies with masking, and a full-scan guard.
@@ -125,6 +137,16 @@ Add a channel in **Manage → Channels**: pick the platform and connection type,
 In a group chat, members @-mention the bot and ask. The bot knows which data sources the member may use and picks the matching one. Chat commands: `help`, `数据源` (list sources), `切换 <name>` (pin a source), `自动` (pick automatically again), `新对话` / `reset` (new conversation).
 
 > The Telegram, WeCom and DingTalk adapters are tested against local fakes of their APIs and have not yet been verified with real accounts; Lark has been used with real workspaces. Reports from real deployments are welcome.
+
+## MCP server
+
+Other AI tools — Claude Desktop, Cursor, Cline, VS Code — can query your data sources through the [Model Context Protocol](https://modelcontextprotocol.io/), with the same read-only admission, access policies, member scopes, row-level rules, privacy setting and audit. Enable it under **Admin → MCP access** (off by default; listens on `127.0.0.1:47860` only), create a scoped token (shown once), and paste the generated snippet into your client. HTTP clients use `http://127.0.0.1:47860/mcp` with `Authorization: Bearer <token>`; stdio clients such as Claude Desktop use the bundled bridge:
+
+```bash
+NL2SQL_MCP_TOKEN=<token> npx -y -p @hedeqiang/dsh-nl2sql nl2sql-mcp
+```
+
+Tools: `list_datasources`, `get_schema`, `query`, `query_metric`, `search_knowledge`, `drill`, `explain_change` (plus `reconcile` / `forecast` when available); resources: the schema of every visible data source. See [docs/mcp.md](docs/mcp.md).
 
 ## Security model
 

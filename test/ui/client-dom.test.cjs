@@ -129,7 +129,9 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.deepEqual(tabs, ['问答', '看板', '表结构', '业务知识', '历史', '管理'])
     await clickEl(document.getElementById('n2s-tab-admin'))
     const nav = [...document.querySelectorAll('.n2s-adminnav-item')].map((b) => b.textContent.replace(/\d+$/, '').trim())
-    assert.deepEqual(nav, ['数据源', '成员与权限', '告警与报告', '渠道', '设置'])
+    // Core sections first, 设置 last; feature sections (extend.adminSections) sit in between.
+    assert.deepEqual(nav.slice(0, 4), ['数据源', '成员与权限', '告警与报告', '渠道'])
+    assert.equal(nav[nav.length - 1], '设置')
     // keyboard: ArrowLeft from 管理 goes to 历史
     await act(async () => { document.getElementById('n2s-tab-admin').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })) }); await settle()
     assert.equal(document.querySelector('.n2s-tabs [aria-selected=true]').textContent.trim(), '历史')

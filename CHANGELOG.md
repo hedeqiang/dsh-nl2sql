@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-12
+
+### Added
+- **Data health:** per-table freshness (latest timestamp, lag, thresholds), the `nl2sql_freshness` tool and stale-data warnings under results and in the schema view, notifications when a table stops updating and when it recovers; a daily data-quality patrol (null rates, duplicate keys, outliers, future timestamps, negative amounts) with a health score and a push when it drops.
+- **Reconciliation:** the `nl2sql_reconcile` tool and saved daily jobs that compare two queries on two data sources by key (tolerances, normalisation), with match rate, rows missing on either side, value differences, run history and pushes with the full differences as Excel.
+- **Chat subscriptions:** `nl2sql_subscribe`, `nl2sql_alert_create` and `nl2sql_subscriptions` create, list, pause and cancel scheduled results and alerts delivered to the chat they were created in, running with the creator's permissions at delivery time.
+- **Data finds people:** daily digests of notable metric changes with their main contributors, automatic attribution in alert messages, metric goals with progress and projection on dashboards, and time-series forecasts (`nl2sql_forecast`, result menu).
+- **Presentation:** PowerPoint and long-image export for dashboards and results, sending the long image to Lark / Telegram, presentation mode, and scheduled sync of results to Lark Bitable.
+- **MCP server:** a local Model Context Protocol endpoint with per-client tokens mapped to owner, member or role scopes, plus the `nl2sql-mcp` stdio bridge for Claude Desktop ([docs/mcp.md](docs/mcp.md)).
+- The **Manage** navigation groups sections into core, *Insight & automation* and *Integrations*.
+
+### Changed
+- Internal: feature modules plug in through `service/features.js` (RPCs, tools, scheduler jobs) and client extension points (`extend.*`); `runQuery` accepts a per-call `maxRows` up to 200,000.
+
+These features are tested with local databases and fake IM / Lark servers; real Lark, Telegram, WeCom, DingTalk and MCP clients have not been exercised yet.
+
 ## [0.12.2] - 2026-11-12
 
 ### Security
@@ -106,7 +122,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.2...v0.12.0

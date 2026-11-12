@@ -51,6 +51,16 @@ The files in `client-src/` are consecutive slices of one module factory function
 
 UI text goes through `t(key)` / `fmt(t, key, params)`. Every key needs both a `zh` and an `en` entry in `client-src/01-locale.js`. Use `joinList` and `colon` from `06-utilities.js` instead of hard-coded Chinese punctuation.
 
+## Adding a feature
+
+New features plug in without editing `index.js` or the page shell:
+
+- **Server:** create `service/<feature>.js` exporting `{ name, methods, rpc(service), tools(ctx, service, helpers), start?(ctx, service) }` and add it to [`service/features.js`](../service/features.js). `methods` are mixed into the service; a method named `jobs_<feature>(now)` returns scheduler jobs `[{ id, due(now), run() }]` that the in-process scheduler runs (see `lastDailySlot` in `service/shared.js`). Queries must go through `runQuery` so read-only admission, access policies, row-level rules, masking and audit apply.
+- **Client:** create `client-src/2Nx-<feature>.js` and register UI through `extend.*` (defined in `client-src/06-utilities.js`): `adminSections` (with an optional `group`), `dashboardMenu`, `dashboardBar`, `resultMenu`, `resultPanels`, `schemaPanels`, `askPanels` and `toolViews`. `client-src/99-apply.js` must stay last: it closes the module factory.
+- **Agent rules:** describe new tools in the preset rules in `cordis.patch.yml`.
+
+Existing feature modules: `freshness` (data health), `reconcile`, `subscriptions`, `proactive` (digests, goals, forecast, alert attribution), `present` (PPT, long image, presentation mode, Bitable) and `mcp`.
+
 ## Commands
 
 ```bash

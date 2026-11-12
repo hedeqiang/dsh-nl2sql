@@ -1,8 +1,11 @@
 {
   "name": "@hedeqiang/dsh-nl2sql",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "description": "Ask MySQL, PostgreSQL, Elasticsearch and CSV/Excel in plain language inside DeepSeek Harness: charts, dashboards, alerts, and IM push and bots for Lark/Feishu, Telegram, WeCom and DingTalk.",
   "type": "module",
+  "bin": {
+    "nl2sql-mcp": "bin/nl2sql-mcp.mjs"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./lib/client.js",
@@ -10,6 +13,8 @@
     "./icon": "./icon.svg"
   },
   "files": [
+    "bin",
+    "docs/mcp.md",
     "index.js",
     "service/*.js",
     "channels/*.js",

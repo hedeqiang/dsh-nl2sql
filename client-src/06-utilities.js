@@ -19,8 +19,9 @@
      *   resultPanels:  Component({ t, result }) rendered under a result (e.g. forecast, freshness note)
      *   schemaPanels:  Component({ t, ds, schema, selected }) rendered above the table list
      *   askPanels:     Component({ t, ds }) rendered on the Ask page under the composer
+     *   toolViews:     { key: '<tool name>', make: (ctx) => Component } conversation tool result views
      */
-    const extend = { adminSections: [], dashboardMenu: [], dashboardBar: [], resultMenu: [], resultPanels: [], schemaPanels: [], askPanels: [] }
+    const extend = { adminSections: [], dashboardMenu: [], dashboardBar: [], resultMenu: [], resultPanels: [], schemaPanels: [], askPanels: [], toolViews: [] }
     const extItems = (list, arg) => list.flatMap(f => { try { return f(arg) ?? [] } catch (e) { console.warn('nl2sql ext', e); return [] } })
 
     /** Join a list for display in the UI language: 「a、b」 / "a, b". */

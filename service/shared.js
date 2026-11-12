@@ -217,6 +217,20 @@ export const RECORD_KINDS = [['history', 'history'], ['feedback', 'feedback'], [
 export const RECORD_LIMITS = { history: 20000, feedback: 5000, delivery: 5000, alertEvent: 5000, admin: 5000, evalRun: 200, schemaChange: 1000 }
 /** Record kinds and the field used as their filter key. */
 export const RECORD_REF = { history: 'datasourceId', feedback: 'datasourceId', delivery: 'channelId', alertEvent: 'alertId', admin: 'action', evalRun: 'datasourceId', schemaChange: 'datasourceId' }
+// Reconciliation runs (service/reconcile.js): summary + first 200 differences per run.
+RECORD_LIMITS.reconcileRun = 2000
+RECORD_REF.reconcileRun = 'reconcileId'
+// Freshness stale / recovered events and data quality runs (service/freshness.js).
+RECORD_LIMITS.freshnessEvent = 5000
+RECORD_REF.freshnessEvent = 'datasourceId'
+RECORD_LIMITS.qualityRun = 1000
+RECORD_REF.qualityRun = 'datasourceId'
+// Lark Bitable sync runs (service/present.js).
+RECORD_LIMITS.bitableRun = 2000
+RECORD_REF.bitableRun = 'syncId'
+// Daily digest runs (service/proactive.js).
+RECORD_LIMITS.digestRun = 1000
+RECORD_REF.digestRun = 'digestId'
 
 /**
  * Growing logs (audit history, feedback, push deliveries, alert events, admin

@@ -23,6 +23,7 @@
         ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: 'nl2sql_query', locale: NS }, makeToolView(ctx, 'query')))
         ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: 'nl2sql_chart', locale: NS }, makeToolView(ctx, 'chart')))
         ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: 'nl2sql_overview', locale: NS }, makeOverviewToolView(ctx)))
+        for (const v of extend.toolViews) ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: v.key, locale: NS }, v.make(ctx)))
         ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({ name: 'conversation.chat.assistant-actions', id: 'nl2sql-send', order: 20, locale: NS }, makeReplyAction(ctx)))
       },
     }

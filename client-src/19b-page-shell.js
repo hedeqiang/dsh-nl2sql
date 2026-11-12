@@ -8,6 +8,10 @@
     const BASE_ADMIN_SECTIONS = ['sources', 'members', 'automation', 'push', 'settings']
     // Feature sections (extend.adminSections) go before 设置.
     const adminSections = () => [...BASE_ADMIN_SECTIONS.slice(0, -1), ...extend.adminSections.map(x => x.id), 'settings']
+    // Nav groups: feature sections are grouped by purpose so the list stays scannable.
+    const NAV_GROUP_OF = { sources: 'core', members: 'core', automation: 'core', push: 'core', health: 'insight', reconcile: 'insight', goals: 'insight', digests: 'insight', subscriptions: 'insight', bitable: 'connect', mcp: 'connect', settings: 'end' }
+    const navGroupOf = (k) => NAV_GROUP_OF[k] ?? extend.adminSections.find(x => x.id === k)?.group ?? 'insight'
+    const NAV_GROUP_ORDER = ['core', 'insight', 'connect', 'end']
     const NAV_KEY = 'nl2sql:nav'
 
     function loadNav() {
@@ -31,10 +35,14 @@
       const autoSub = sub === 'reports' ? 'reports' : 'alerts'
       return h('div', { className: 'n2s-admin' },
         h('nav', { className: 'n2s-adminnav', 'aria-label': t('tab.admin') },
-          adminSections().map(k => h('button', { key: k, type: 'button', className: 'n2s-adminnav-item', 'aria-current': section === k ? 'page' : undefined, onClick: () => onNavigate({ section: k, sub: null }) },
+          NAV_GROUP_ORDER.flatMap(g => {
+            const keys = adminSections().filter(k => navGroupOf(k) === g)
+            if (!keys.length) return []
+            return [g !== 'core' && g !== 'end' && h('div', { key: `g:${g}`, className: 'n2s-adminnav-group', role: 'presentation' }, t(`admin.group.${g}`)), g === 'end' && h('div', { key: 'g:end', className: 'n2s-adminnav-sep', role: 'presentation' }), ...keys.map(k => h('button', { key: k, type: 'button', className: 'n2s-adminnav-item', 'aria-current': section === k ? 'page' : undefined, onClick: () => onNavigate({ section: k, sub: null }) },
             h('span', { className: 'ico', 'aria-hidden': true }, (AdminIcons[k] ?? extend.adminSections.find(x => x.id === k)?.icon ?? (() => Icon.chart(15)))()),
             h('span', { className: 'n2s-grow' }, extend.adminSections.find(x => x.id === k)?.label(t) ?? t(`admin.${k}`)),
-            k === 'automation' && firing > 0 ? h('span', { className: 'n2s-navbadge err', title: t('al.firing') }, firing) : badge[k] ? h('span', { className: 'n2s-navbadge' }, badge[k]) : null))),
+            k === 'automation' && firing > 0 ? h('span', { className: 'n2s-navbadge err', title: t('al.firing') }, firing) : badge[k] ? h('span', { className: 'n2s-navbadge' }, badge[k]) : null))].filter(Boolean)
+          })),
         h('div', { className: 'n2s-adminbody' },
           section === 'sources' ? h(SourcesTab, { t, datasources }) :
           section === 'members' ? h(MembersTab, { t, datasources }) :
