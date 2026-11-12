@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-12
+
+### Fixed
+- History & audit: the per-row delete button overlapped the row count and duration columns; it now has its own column.
+
 ## [0.12.0] - 2026-11-12
 
 ### Added
@@ -81,7 +86,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/hedeqiang/dsh-nl2sql/releases/tag/v0.11.1

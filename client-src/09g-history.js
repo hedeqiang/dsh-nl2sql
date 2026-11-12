@@ -54,8 +54,8 @@
         !list.loading && rows.length === 0 && h('div', { className: 'n2s-empty' }, h('h3', null, t('hist.empty')), h('div', null, t('hist.emptyHint'))),
         rows.length > 0 && h('div', { className: 'n2s-hist', role: 'list' }, rows.map(r => {
           const isOpen = open === r.id
-          return h('div', { key: r.id ?? `${r.at}`, className: 'n2s-hist-row has-del', role: 'listitem' },
-            h('button', { type: 'button', className: 'n2s-iconbtn n2s-rowdel', title: t('hist.deleteOne'), 'aria-label': `${t('hist.deleteOne')}: ${r.title || t('hist.untitled')}`, onClick: () => removeRow(r) }, Icon.trash(14)),
+          return h('div', { key: r.id ?? `${r.at}`, className: 'n2s-hist-row', role: 'listitem' },
+            h('div', { className: 'n2s-hist-head' },
             h('button', { type: 'button', className: 'n2s-hist-main', 'aria-expanded': isOpen, onClick: () => setOpen(isOpen ? null : r.id) },
               statusDot(r.status),
               h('span', { className: 'n2s-hist-what' },
@@ -64,6 +64,7 @@
               h('span', { className: 'n2s-hist-when' }, h('span', { title: new Date(r.at).toLocaleString() }, rel(r.at)), h('span', { className: 'src' }, `${t(`hist.source.${r.source}`)} · ${r.datasourceName ?? ''}`)),
               h('span', { className: 'n2s-hist-num' }, r.rows !== undefined ? fmt(t, 'result.rows', { count: r.rows }) : '—', h('br'), r.elapsedMs !== undefined ? `${r.elapsedMs} ms` : ''),
               h('span', { className: 'n2s-hist-chev' }, Icon.chev(12))),
+            h('button', { type: 'button', className: 'n2s-iconbtn n2s-rowdel', title: t('hist.deleteOne'), 'aria-label': `${t('hist.deleteOne')}: ${r.title || t('hist.untitled')}`, onClick: () => removeRow(r) }, Icon.trash(14))),
             isOpen && h('div', { className: 'n2s-hist-detail' },
               r.error && h('div', { className: `n2s-notice ${r.status === 'blocked' ? 'warn' : 'err'}` }, r.error),
               h('div', { style: { position: 'relative' } },
