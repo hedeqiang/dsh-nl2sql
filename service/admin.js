@@ -9,6 +9,9 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { DEFAULT_SETTINGS, RECORD_LIMITS, UserError, newId, pick } from './shared.js'
 import { widgetWidth } from './dashboards.js'
+import { kindOf } from '../channels/index.js'
+import { findIdentityClash, normalizeIdentities, normalizeUserRecord } from './access.js'
+import { migrateChannelRecord } from './channels.js'
 
 const PKG = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) } catch { return {} } })()
 
@@ -18,7 +21,7 @@ const SECTIONS = ['settings', 'datasources', 'knowledge', 'dashboards', 'alerts'
 const DS_FIELDS = ['id', 'name', 'type', 'host', 'port', 'database', 'user', 'charset', 'timezone', 'ssl', 'schemas', 'description', 'privacy', 'policy']
 const ALERT_RUNTIME = ['state', 'lastCheckedAt', 'lastValue', 'lastResultId', 'lastFiredAt', 'lastError']
 const REPORT_FIELDS = ['id', 'title', 'scope', 'question', 'instructions', 'period', 'time', 'weekdays', 'timeZone', 'target']
-const CHANNEL_FIELDS = ['id', 'name', 'type', 'domain', 'appId', 'receiveIdType', 'receiveId', 'description', 'isDefault', 'chartMode']
+const CHANNEL_FIELDS = ['id', 'name', 'type', 'platform', 'domain', 'appId', 'receiveIdType', 'receiveId', 'description', 'isDefault', 'chartMode', 'config', 'bot']
 
 async function fileBytes(file) {
   try { return (await stat(file)).size } catch { return 0 }
@@ -199,8 +202,10 @@ export const methods = {
     const dsName = (id) => this.findDatasource(id)?.name ?? null
     const chName = (id) => this.state.channels.find(c => c.id === id)?.name ?? null
     const settings = structuredClone(this.state.settings)
-    if (Array.isArray(settings.larkDefaultDatasourceIds)) settings.larkDefaultDatasources = settings.larkDefaultDatasourceIds.map(dsName).filter(Boolean)
-    delete settings.larkDefaultDatasourceIds
+    const botDs = settings.botDefaultDatasourceIds !== undefined ? settings.botDefaultDatasourceIds : settings.larkDefaultDatasourceIds
+    if (Array.isArray(botDs)) settings.botDefaultDatasources = botDs.map(dsName).filter(Boolean)
+    if (settings.larkDefaultRole !== undefined && settings.botDefaultRole === undefined) settings.botDefaultRole = settings.larkDefaultRole
+    delete settings.larkDefaultDatasourceIds; delete settings.botDefaultDatasourceIds; delete settings.larkDefaultRole
     if (settings.schemaNotifyChannel) settings.schemaNotifyChannelName = chName(settings.schemaNotifyChannel)
     delete settings.schemaNotifyChannel
     return {
@@ -234,9 +239,9 @@ export const methods = {
         channelName: chName(r.channelId),
         dashboardName: this.state.dashboards.find(d => d.id === r.dashboardId)?.name ?? null,
       })),
-      channels: this.state.channels.map(c => ({ ...pick(c, CHANNEL_FIELDS), hasSecret: Boolean(c.hasSecret), hasSign: Boolean(c.hasSign) })),
+      channels: this.state.channels.map(c => { migrateChannelRecord(c); return { ...structuredClone(pick(c, CHANNEL_FIELDS)), secretsSet: { ...(c.secretsSet ?? {}) }, hasSecret: Boolean(c.hasSecret ?? Object.keys(c.secretsSet ?? {}).length), hasSign: Boolean(c.hasSign) } }),
       users: (this.state.users ?? []).map(u => {
-        const out = structuredClone(u)
+        const out = normalizeUserRecord(structuredClone(u))
         out.datasources = Array.isArray(u.datasourceIds) ? u.datasourceIds.map(dsName).filter(Boolean) : null
         out.defaultDatasource = dsName(u.defaultDatasourceId)
         out.rowRules = (u.rowRules ?? []).map(r => ({ ...r, datasource: r.datasourceId ? dsName(r.datasourceId) : null, datasourceId: undefined }))
@@ -337,18 +342,24 @@ export const methods = {
       if (mode === 'replace') chMap.clear()
       for (const src of doc.channels ?? []) {
         const name = String(src?.name ?? '').trim().slice(0, 64)
-        if (!name || !['lark_webhook', 'lark_app'].includes(src.type)) { r.skipped++; warn('channels', `渠道「${name || '?'}」无效，已跳过`); continue }
+        const found = kindOf(src?.type)
+        if (!name || !found) { r.skipped++; warn('channels', `渠道「${name || '?'}」无效${src?.type && !found ? `（不支持的类型 ${src.type}）` : ''}，已跳过`); continue }
         const current = mode === 'replace' ? this.state.channels.find(c => c.name === name) : next.find(c => c.name === name)
-        const fields = pick(src, CHANNEL_FIELDS.filter(k => k !== 'id' && k !== 'isDefault'))
+        const fields = structuredClone(pick(src, CHANNEL_FIELDS.filter(k => k !== 'id' && k !== 'isDefault')))
+        fields.platform = found.adapter.id
+        if (fields.bot) fields.bot = this.normalizeBotConfig(fields.bot, {})
+        if (current && current.type !== src.type) { delete current.config; delete current.secretsSet }
         if (current) {
-          const c = { ...current, ...fields, name, updatedAt: Date.now() }
+          const c = migrateChannelRecord({ ...current, ...fields, name, ...(src.config ? {} : { config: undefined }), updatedAt: Date.now() })
           const i = next.findIndex(x => x.id === current.id)
           if (i >= 0) next[i] = c; else next.push(c)
           chMap.set(name, c.id)
           r.update++
         } else {
           const id = src.id && /^ch-[\w-]+$/.test(src.id) && !next.some(c => c.id === src.id) && !this.state.channels.some(c => c.id === src.id) ? src.id : newId('ch')
-          const c = { id, ...fields, name, hasSecret: false, hasSign: false, needsSecret: true, createdAt: Date.now(), updatedAt: Date.now(), isDefault: false }
+          const c = migrateChannelRecord({ id, ...fields, name, hasSecret: false, hasSign: false, secretsSet: {}, needsSecret: true, createdAt: Date.now(), updatedAt: Date.now(), isDefault: false })
+          // Bots need their secret back first.
+          if (c.bot) c.bot.enabled = false
           next.push(c)
           chMap.set(name, id)
           r.add++
@@ -496,14 +507,17 @@ export const methods = {
         if (!name || !['person', 'chat'].includes(src.kind ?? 'person') || !['admin', 'analyst', 'viewer'].includes(src.role ?? 'analyst')) { r.skipped++; continue }
         const ids = src.datasources === null || src.datasources === undefined ? null : (src.datasources ?? []).map(resolveDs).filter(Boolean)
         if (Array.isArray(src.datasources) && ids.length < src.datasources.length) warn('users', `成员「${name}」的部分数据源不存在，已忽略`)
-        const u = {
+        let identities
+        try { identities = Array.isArray(src.identities) ? normalizeIdentities(src.identities) : undefined } catch (error) { r.skipped++; warn('users', `成员「${name}」：${error.message}`); continue }
+        const u = normalizeUserRecord({
           ...pick(src, ['kind', 'role', 'larkOpenId', 'email', 'larkChatId', 'disabled', 'note']),
+          ...(identities ? { identities } : {}),
           kind: src.kind ?? 'person', role: src.role ?? 'analyst', name,
           datasourceIds: ids, defaultDatasourceId: resolveDs(src.defaultDatasource) ?? ids?.[0] ?? null,
           rowRules: (src.rowRules ?? []).map(x => ({ datasourceId: x.datasource ? resolveDs(x.datasource) ?? null : null, column: x.column, values: x.values ?? [] })).filter(x => x.column && x.values.length),
           updatedAt: Date.now(),
-        }
-        const existing = next.find(x => (u.larkOpenId && x.larkOpenId === u.larkOpenId) || (u.email && x.email === u.email) || (u.larkChatId && x.larkChatId === u.larkChatId)) ?? next.find(x => x.name === name)
+        })
+        const existing = findIdentityClash(next, { ...u, id: undefined }) ?? next.find(x => x.name === name)
         if (existing) { next[next.indexOf(existing)] = { ...u, id: existing.id, createdAt: existing.createdAt }; r.update++ }
         else {
           const id = src.id && /^u-[\w-]+$/.test(src.id) && !next.some(x => x.id === src.id) ? src.id : newId('u')
@@ -518,7 +532,9 @@ export const methods = {
     if (want.has('settings') && doc.settings && typeof doc.settings === 'object') {
       const r = sec('settings')
       const input = pick(doc.settings, Object.keys(DEFAULT_SETTINGS).concat(['schemaCheckDaily']))
-      if (Array.isArray(doc.settings.larkDefaultDatasources)) input.larkDefaultDatasourceIds = doc.settings.larkDefaultDatasources.map(resolveDs).filter(Boolean)
+      if (doc.settings.larkDefaultRole !== undefined && input.botDefaultRole === undefined) input.botDefaultRole = doc.settings.larkDefaultRole
+      const botDs = doc.settings.botDefaultDatasources ?? doc.settings.larkDefaultDatasources
+      if (Array.isArray(botDs)) input.botDefaultDatasourceIds = botDs.map(resolveDs).filter(Boolean)
       if (doc.settings.schemaNotifyChannelName) input.schemaNotifyChannel = resolveCh(doc.settings.schemaNotifyChannelName) ?? ''
       if (apply) {
         const before = structuredClone(this.state.settings)

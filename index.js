@@ -18,12 +18,12 @@ import { methods as m2 } from './service/schema.js'
 import { methods as m3 } from './service/query.js'
 import { methods as m4 } from './service/dashboards.js'
 import { methods as m5 } from './service/push.js'
-import { methods as m6 } from './service/lark.js'
+import { methods as m6 } from './service/bots.js'
+import { methods as mChannels } from './service/channels.js'
 import { methods as m7 } from './service/evaluation.js'
 import { methods as m8 } from './service/alerts.js'
 import { methods as m9 } from './service/uploads.js'
 import { methods as m10 } from './service/admin.js'
-import { methods as mLarkActions } from './service/lark-actions.js'
 import { methods as mSuggest } from './service/suggestions.js'
 const { CHART_TYPES, DEFAULT_SETTINGS, RECORD_KINDS, RPC_PATH, Records, UserError, newId, pick, toUserError } = shared
 
@@ -36,7 +36,7 @@ class Nl2SqlService {
     this.config = config ?? {}
     this.dir = this.config.dataDir ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'nl2sql')
     this.file = join(this.dir, 'state.json')
-    this.state = { version: 1, datasources: [], settings: structuredClone(DEFAULT_SETTINGS), current: null, sessions: {}, dashboard: [], knowledge: {}, reports: [], dashboardFilters: [], channels: [], dashboards: [], currentDashboard: null, evals: {}, alerts: [], users: [], larkBot: null }
+    this.state = { version: 1, datasources: [], settings: structuredClone(DEFAULT_SETTINGS), current: null, sessions: {}, dashboard: [], knowledge: {}, reports: [], dashboardFilters: [], channels: [], dashboards: [], currentDashboard: null, evals: {}, alerts: [], users: [], botConversations: {} }
     this.drivers = new Map()
     this.schemas = new Map()
     this.results = new Map()
@@ -58,6 +58,8 @@ class Nl2SqlService {
       this.state.currentDashboard = 'db-default'
     }
     this.syncLegacyDashboard()
+    // Channels (adapter registry), bots on channels, member identities, bot settings.
+    const migrated = [await this.initChannels(), this.migrateUsers(), this.migrateSettings()].some(Boolean)
     try {
       this.store = new ResultStore(join(this.dir, 'results.sqlite'))
     } catch (error) {
@@ -82,8 +84,10 @@ class Nl2SqlService {
       if (changed) {
         if (Object.keys(moved).length) console.warn('nl2sql: migrated logs to SQLite: %s', JSON.stringify(moved))
         await this.save()
+        return
       }
     }
+    if (migrated) await this.save()
   }
 
   /** Keep the legacy `dashboard` / `dashboardFilters` fields pointing at the current dashboard. */
@@ -104,8 +108,7 @@ class Nl2SqlService {
     if (ids.length > keep) for (const id of ids.slice(0, ids.length - keep)) { delete this.state.sessions[id]; delete this.state.sessionActors?.[id]; delete this.state.evalExclusions?.[id] }
     for (const id of Object.keys(this.state.sessionActors ?? {})) if (!(id in (this.state.sessions ?? {}))) delete this.state.sessionActors[id]
     for (const id of Object.keys(this.state.evalExclusions ?? {})) if (!(id in (this.state.sessions ?? {}))) delete this.state.evalExclusions[id]
-    const convs = Object.values(this.state.larkSessions ?? {}).sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0))
-    if (convs.length > 500) for (const c of convs.slice(500)) delete this.state.larkSessions[c.key]
+    this.pruneBotConversations()
   }
 
   save() {
@@ -132,9 +135,9 @@ class Nl2SqlService {
       await Promise.race([Promise.allSettled(jobs), new Promise(r => { timer = setTimeout(r, 3000) })])
       clearTimeout(timer)
     }
-    if (this.larkBot) { try { await this.larkBot.stop() } catch {} }
-    // Card-button analyses still running in the background (service/lark-actions.js).
-    if (this.larkActionJobs?.size) await Promise.race([Promise.allSettled([...this.larkActionJobs]), new Promise(r => setTimeout(r, 3000).unref?.())])
+    await this.stopAllBots()
+    // Button analyses still running in the background (service/bots.js).
+    if (this.botActionJobs?.size) await Promise.race([Promise.allSettled([...this.botActionJobs]), new Promise(r => setTimeout(r, 3000).unref?.())])
     await Promise.allSettled([...this.drivers.values()].map(p => p.then(d => d.close())))
     this.drivers.clear()
     await this.writing
@@ -142,7 +145,7 @@ class Nl2SqlService {
   }
 
 }
-for (const m of [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, mSuggest, mLarkActions]) Object.defineProperties(Nl2SqlService.prototype, Object.getOwnPropertyDescriptors(m))
+for (const m of [m0, m1, m2, m3, m4, m5, mChannels, m6, m7, m8, m9, m10, mSuggest]) Object.defineProperties(Nl2SqlService.prototype, Object.getOwnPropertyDescriptors(m))
 const DATASOURCE_PARAM = { type: 'string', description: 'Data source id or name. Omit to use the one bound to this session.' }
 
 function textBlock(text) {
@@ -296,15 +299,15 @@ function registerTools(ctx, service) {
 function registerSendTool(ctx, service) {
   ctx.tools.register({
     name: 'nl2sql_send',
-    description: 'Send a message to an IM channel (Lark / Feishu group or user) configured by the user in the Data Q&A page: a title, a Markdown body, and up to 10 query results by resultId (rendered as native interactive charts, KPI lines or tables). The Markdown supports headings, bold/italic, lists, quotes, code blocks, links, tables (small ones inline, larger ones become table components), <font color=\'green|red|grey\'>…</font> and <at id=all></at>. Only send when the user asks to share/push/send, or when a scheduled report instructs you to. Use action=list to see channels.',
+    description: 'Send a message to an IM channel (such as Lark/Feishu, Telegram, WeCom, DingTalk) configured by the user in the Data Q&A page: a title, a Markdown body, and up to 10 query results by resultId. Each platform renders them as natively as it can (Lark: interactive cards with native charts; others: chart images or Markdown tables — see `capabilities` in action=list). The Markdown supports headings, bold/italic, lists, quotes, code blocks, links, tables, <font color=\'green|red|grey\'>…</font> and <at id=all></at>; platforms with basic Markdown drop the <font>/<at> tags. Only send when the user asks to share/push/send, or when a scheduled report instructs you to. Use action=list to see channels.',
     parameters: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['send', 'list'], description: 'send (default) or list channels.' },
         channel: { type: 'string', description: 'Channel id or name; omit for the default channel.' },
-        title: { type: 'string', description: 'Card title.' },
+        title: { type: 'string', description: 'Message title.' },
         text: { type: 'string', description: 'Markdown body: summary, conclusions, tables. Write it for the IM reader; do not paste raw result rows that are already attached via resultIds.' },
-        chartMode: { type: 'string', enum: ['native', 'image', 'table'], description: 'How attached results render: native card charts (default), PNG images (app bots only), or tables.' },
+        chartMode: { type: 'string', enum: ['native', 'image', 'table'], description: 'How attached results render: native card charts, PNG images, or tables. Omit to use the channel default; unsupported modes fall back to it.' },
         resultIds: { type: 'array', items: { type: 'string' }, description: 'resultIds from nl2sql_query / nl2sql_chart / nl2sql_overview to include.' },
         includeSql: { type: 'boolean', description: 'Also include each result\'s SQL.' },
       },
@@ -314,7 +317,7 @@ function registerSendTool(ctx, service) {
     presentCall: (args) => ({ card: 'generic', title: args?.action === 'list' ? '列出推送渠道' : `推送到 ${args?.channel ?? '默认渠道'}：${args?.title ?? ''}`, kind: 'other' }),
     execute: async (args, exec) => {
       try {
-        if (args.action === 'list') return { channels: service.listChannels().map(c => pick(c, ['id', 'name', 'type', 'description', 'isDefault'])) }
+        if (args.action === 'list') return { channels: service.listChannels().map(c => ({ ...pick(c, ['id', 'name', 'type', 'platform', 'description', 'isDefault']), ...(c.capabilities ? { capabilities: pick(c.capabilities, ['markdown', 'charts', 'tables', 'chartModes']) } : {}) })) }
         return await service.sendToChannel({ channelId: args.channel, title: args.title, text: args.text, resultIds: args.resultIds ?? [], includeSql: args.includeSql, chartMode: args.chartMode, source: 'agent', sessionId: exec.agent?.id })
       } catch (error) {
         throw error instanceof UserError ? new Error(error.message) : error
@@ -452,11 +455,13 @@ function registerRpc(ctx, service) {
     deleteChannel: (p) => service.deleteChannel(p.id),
     testChannel: (p) => service.testChannel(p.id),
     listChannelChats: (p) => service.listChannelChats(p ?? {}),
+    channelCatalog: (p) => service.channelCatalog(p ?? {}),
+    listChannelTargets: (p) => service.listChannelTargets(p ?? {}),
     sendToChannel: (p) => service.sendToChannel({ ...p, source: p.source === 'dashboard' ? 'dashboard' : 'ui' }),
     sendDashboard: (p) => service.sendDashboard(p),
     previewAssistantMessage: (p) => service.previewAssistantMessage(p),
     sendAssistantMessage: (p) => service.sendAssistantMessage(p),
-    listDeliveries: () => service.listDeliveries(),
+    listDeliveries: (p) => service.listDeliveries(p?.limit ?? 100),
     listHistory: (p) => service.listHistory(p ?? {}),
     clearHistory: () => service.clearHistory(),
     deleteHistory: (p) => service.deleteHistory(p ?? {}),
@@ -497,6 +502,9 @@ function registerRpc(ctx, service) {
     larkBotStatus: () => service.larkBotStatus(),
     saveLarkBot: (p) => service.saveLarkBot(p),
     restartLarkBot: async () => { await service.restartLarkBot(); return service.larkBotStatus() },
+    botStatus: () => service.botStatus(),
+    saveBot: (p) => service.saveBot(p ?? {}),
+    restartBot: async (p) => { await service.restartBot({ channelId: p?.channelId }); return (await service.botStatus()).find(b => b.channelId === p?.channelId) ?? null },
     queryMetric: (p) => service.queryMetric({ ...p, source: 'ui' }),
     parseUpload: (p) => service.parseUpload(p),
     importUpload: (p) => service.importUpload(p),
@@ -559,7 +567,7 @@ function registerRpc(ctx, service) {
         return Response.json({ ok: true, value: value ?? null }, { headers: { 'cache-control': 'no-store' } })
       } catch (error) {
         const e = toUserError(error)
-        return Response.json({ ok: false, error: { code: e.code ?? 'nl2sql/error', message: e.message } }, { headers: { 'cache-control': 'no-store' } })
+        return Response.json({ ok: false, error: { code: e.code ?? 'nl2sql/error', message: e.message, ...(e.field ? { field: e.field } : {}) } }, { headers: { 'cache-control': 'no-store' } })
       }
     },
   })
@@ -575,8 +583,8 @@ export async function apply(ctx, config) {
   registerKnowledgeTool(ctx, service)
   registerOverviewTool(ctx, service)
   registerSendTool(ctx, service)
-  // Inbound Lark bot (long connection), if enabled.
-  service.restartLarkBot().catch(error => console.warn('nl2sql lark: start failed: %s', error.message))
+  // Inbound IM bots (Lark long connection, Telegram polling, …) for every enabled bot channel.
+  service.startBots().catch(error => console.warn('nl2sql bot: start failed: %s', error.message))
   service.scheduleAlerts()
   registerAnalysisTools(ctx, service)
 }

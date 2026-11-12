@@ -7,13 +7,13 @@
 | `index.js` | Host 入口：组装服务、注册 Agent 工具与页面 RPC（`/api/nl2sql.rpc`） |
 | `service/shared.js` | 公共常量、工具函数、`Records`（日志型数据存储） |
 | `service/datasources.js` | 设置、数据源、会话绑定、驱动池 |
-| `service/access.js` | 成员、角色、数据源范围、行级权限、飞书身份解析 |
+| `service/access.js` | 成员（多平台身份 `identities`）、角色、数据源范围、行级权限、`resolveActor` 身份解析 |
 | `service/schema.js` | 表结构分析、变更检测、业务知识及导入导出 |
 | `service/query.js` | 查询执行（只读检查、访问控制、行级过滤、缓存、脱敏）、指标、下钻归因、Excel 导出 |
 | `service/dashboards.js` | 多看板、全局筛选、自动概览、定时报告 |
-| `service/push.js` | 飞书推送渠道、推送记录、结果反馈 |
-| `service/lark.js` | 飞书机器人：收消息 → 会话 → 按轮次取回答案 → 回复卡片 |
-| `service/lark-actions.js` | 回答卡片上的交互按钮（拆分 / 为什么变化 / 明细 / 固定到看板）：按钮只带不透明令牌（SQLite `action_tokens`，7 天过期），`card.action.trigger` 经同一长连接回调，点击者重新鉴权，3 秒内回 toast，后台执行后回复新卡片 |
+| `service/channels.js` | IM 渠道（按适配器校验、密钥 `nl2sql/ch-<id>`、列表、测试、推送、推送记录），见 `docs/CHANNELS.md` |
+| `service/bots.js` | IM 机器人：每个启用机器人的渠道运行适配器的 `createBot`；收消息 → 会话 → 按轮次取回答案 → 回复；回答上的交互按钮（拆分 / 为什么变化 / 明细 / 固定到看板）只带不透明令牌（SQLite `action_tokens`，7 天过期），点击者重新鉴权 |
+| `service/push.js` | 发送助手回复 / 看板、看板快照、结果反馈 |
 | `service/evaluation.js` | 准确率评测 |
 | `service/alerts.js` | 告警与调度器（含表结构每日检查） |
 | `service/uploads.js` | CSV / Excel 上传到本地 SQLite（服务端暂存 `uploads/<uploadId>`，1 小时过期，支持分片） |
@@ -24,7 +24,12 @@
 | `filters.js` / `analysis.js` | 筛选注入；指标、下钻、归因、告警判断、结果比对 |
 | `drivers.js` / `sqlite-driver.js` | 数据库驱动 |
 | `store.js` | SQLite：查询结果、缓存、快照、日志记录（`results.sqlite`） |
-| `im.js` / `lark-bot.js` / `xlsx.js` | 飞书卡片与推送、飞书长连接、Excel/CSV 读写 |
+| `channels/index.js` | 渠道适配器注册表与目录（`registerAdapter` / `kindOf` / `listCatalog`） |
+| `channels/http.js` / `channels/message.js` | 带超时的请求与 `ChannelError`；与平台无关的消息工具（图表 PNG、Markdown 表格、去除 `<font>`/`<at>`） |
+| `channels/lark.js` | 飞书适配器：卡片、Webhook / 应用推送、长连接机器人 |
+| `channels/telegram.js` / `wecom.js` / `dingtalk.js` | Telegram / 企业微信 / 钉钉适配器 |
+| `im.js` / `lark-bot.js` | 兼容旧导入路径的转发模块（实现在 `channels/lark.js`） |
+| `xlsx.js` | Excel/CSV 读写 |
 | `client-src/*.js` | 页面源码（按功能拆分），**编辑这里** |
 | `lib/client.js` | 由 `client-src` 拼接生成的浏览器模块，**不要直接编辑** |
 

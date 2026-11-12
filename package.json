@@ -12,6 +12,7 @@
   "files": [
     "index.js",
     "service/*.js",
+    "channels/*.js",
     "drivers.js",
     "policy.js",
     "filters.js",
