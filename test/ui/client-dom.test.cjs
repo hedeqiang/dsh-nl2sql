@@ -77,10 +77,12 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
   let plugin
   window.__ModuleLoader__ = { load(r) { plugin = r.factory(Object.assign((n) => ({ react: React, 'react-dom': ReactDOM })[n], { async: () => new Promise(() => {}) })) } }
   require(path.join(PLUGIN_DIR, 'lib', 'client.js'))
+  // Same shape as dsh-client-locale's LocaleSnapshot ({ active, locales, revision }).
+  const LOCALE_SNAPSHOT = Object.freeze({ active: 'zh', locales: [], revision: 1 })
   const regs = {}; let dict
   const ctx = {
     effect(fn) { return fn() },
-    locale: { register(ns, d) { dict = d.zh; return () => {} }, bind() { return (k) => dict[k] ?? `!!${k}` }, subscribe() { return () => {} }, getSnapshot() { return 'zh' } },
+    locale: { register(ns, d) { dict = d.zh; return () => {} }, bind() { return (k) => dict[k] ?? `!!${k}` }, subscribe() { return () => {} }, getSnapshot() { return LOCALE_SNAPSHOT } },
     slots: { inject(k, f) { f() }, register(opt, C) { regs[opt.name + ':' + (opt.key ?? opt.id)] = C } }, layout: {}, uiWorkspace: { startSession() {}, openSession() {} },
   }
   plugin.apply(ctx)
@@ -367,7 +369,8 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
   })
 
   // ------------------------------------------------ new host (docs/CHANNELS.md)
-  const tx = (zh, en) => ({ zh, en: en ?? zh })
+  // English differs from Chinese on purpose: the UI must pick the active locale (zh here).
+  const tx = (zh, en) => ({ zh, en: en ?? `EN:${zh}` })
   const newCatalog = [
     { platform: 'lark', name: tx('飞书', 'Lark'), kinds: [
       { id: 'lark_webhook', label: tx('群机器人（Webhook）'), description: tx('群自定义机器人'), fields: [{ key: 'webhookUrl', label: tx('Webhook 地址'), type: 'secret', secret: true, required: true }], capabilities: { push: true, charts: 'native', buttons: false, bot: false, listTargets: false }, setupSteps: tx(['添加自定义机器人']) },
@@ -418,6 +421,9 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     const dd = document.querySelector('[data-channel="ch4"]')
     assert.match(dd.textContent, /仅表格/); assert.match(dd.textContent, /签名不匹配/); assert.match(dd.textContent, /Webhook 地址已加密保存/)
     assert.doesNotMatch(document.querySelector('.n2s-pgroups').textContent, /botToken|appSecret/)
+    // Catalog text follows the active locale (LocaleSnapshot.active = 'zh'), never the English variant.
+    assert.doesNotMatch(document.querySelector('.n2s-pgroups').textContent, /EN:/)
+    assert.match(document.querySelector('.n2s-pgroups').textContent, /群机器人（Webhook）|应用机器人/)
   })
 
   await test('渠道 (new host): picker → Telegram form from fields → validation → save {type, config, secrets, bot}', async () => {

@@ -8,7 +8,11 @@
 
     /** Current UI language ('zh' | 'en'), updated by the page/tool views on render. */
     let uiLang = 'zh'
-    const setUiLang = (snapshot) => { uiLang = /^zh/i.test(String(snapshot?.locale ?? snapshot ?? 'zh')) ? 'zh' : 'en' }
+    // LocaleSnapshot is { active, locales, revision } (dsh-client-locale); older hosts passed a string.
+    const setUiLang = (snapshot) => {
+      const id = typeof snapshot === 'string' ? snapshot : (snapshot?.active ?? snapshot?.locale ?? 'zh')
+      uiLang = /^zh/i.test(String(id)) ? 'zh' : 'en'
+    }
 
     function formatNumber(v) {
       const n = Number(v)
