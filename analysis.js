@@ -9,6 +9,7 @@
  */
 
 import { timeBounds, TIME_RANGES } from './filters.js'
+import { dashDashCommentFollower } from './sql-guard.js'
 
 // ------------------------------------------------------------ quoting
 
@@ -83,7 +84,9 @@ function tokenize(sql, { dialect } = {}) {
     const c = sql[i]
     const n = sql[i + 1]
     if (/\s/.test(c)) { i++; continue }
-    if ((c === '-' && n === '-') || (c === '#' && dialect !== 'postgres')) { while (i < sql.length && sql[i] !== '\n') i++; continue }
+    // MySQL: `--` starts a comment only when followed by a control/space character (or end); other dialects: always.
+    const dashComment = c === '-' && n === '-' && (dialect === 'postgres' || dialect === 'sqlite' || dialect === 'elasticsearch' || dashDashCommentFollower(sql[i + 2]))
+    if (dashComment || (c === '#' && dialect !== 'postgres' && dialect !== 'sqlite' && dialect !== 'elasticsearch')) { while (i < sql.length && sql[i] !== '\n') i++; continue }
     if (c === '/' && n === '*') { const e = sql.indexOf('*/', i + 2); i = e < 0 ? sql.length : e + 2; continue }
     if (c === '\'' || c === '"' || c === '`') {
       const start = i

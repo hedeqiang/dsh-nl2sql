@@ -31,6 +31,7 @@
     /** Modal shell: portal, backdrop, Escape, initial focus and focus restore. */
     function Modal({ label, labelledBy, onClose, width, children, className }) {
       const box = useRef(null)
+      useFocusTrap(box)
       useEffect(() => {
         const prev = document.activeElement
         setTimeout(() => box.current?.querySelector('[data-autofocus], input:not([type=checkbox]), select, button:not(.n2s-modal-x)')?.focus(), 0)
@@ -56,13 +57,13 @@
             h('span', { className: 'n2s-faint n2s-small' }, fmt(t, 'ch.kindsN', { n: (x.kinds ?? []).length }))))),
         p && h(React.Fragment, null,
           h('div', { className: 'n2s-flabel', id: 'n2s-wiz-klabel', style: { marginTop: 18 } }, fmt(t, 'ch.pickKind', { platform: platformName(t, p.platform, catalog) })),
-          h('div', { className: 'n2s-kindcards', role: 'list', 'aria-labelledby': 'n2s-wiz-klabel', onKeyDown: (e) => arrowNav(e, false) },
-            (p.kinds ?? []).map(k => h('button', { key: k.id, type: 'button', role: 'listitem', 'data-nav': true, className: 'n2s-kindcard', onClick: () => onPick(p.platform, k.id) },
+          h('ul', { className: 'n2s-kindcards', 'aria-labelledby': 'n2s-wiz-klabel', onKeyDown: (e) => arrowNav(e, false) },
+            (p.kinds ?? []).map(k => h('li', { key: k.id, className: 'n2s-kindcard-li' }, h('button', { type: 'button', 'data-nav': true, className: 'n2s-kindcard', onClick: () => onPick(p.platform, k.id) },
               h('span', { className: 'n2s-kindcard-title' }, L(k.label), h('span', { className: 'n2s-grow' }), Icon.arrow(14)),
               k.description && h('span', { className: 'n2s-kindcard-desc' }, L(k.description)),
               h('span', { className: 'n2s-row', style: { gap: 6, marginTop: 4 } },
                 h(CapabilityChips, { t, caps: k.capabilities, type: k.id }),
-                k.capabilities?.bot && h('span', { className: 'n2s-faint n2s-small' }, t('ch.noPublicUrl'))))))))
+                k.capabilities?.bot && h('span', { className: 'n2s-faint n2s-small' }, t('ch.noPublicUrl')))))))))
     }
 
     // ---------------------------------------------------------------- step 2
@@ -299,7 +300,7 @@
 
     // ----------------------------------------------------------------- list
 
-    const shortTime = (ts) => new Date(ts).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const shortTime = (ts) => new Date(ts).toLocaleString(uiLocale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
     function ChannelRow({ t, c, catalog, bots, onEdit, act }) {
       const kind = findKind(catalog, c.type)?.kind
@@ -363,7 +364,7 @@
       const channels = useChannels()
       const bots = useBots()
       const { catalog } = useCatalog(t)
-      const deliveries = useAsync(() => call('listDeliveries'), [channels])
+      const deliveries = useAsync(() => call('listDeliveries'), [channels], [])
       const [editing, setEditing] = useState(null)
       // Pick up host upgrades (catalog, new channel shape) whenever the page opens.
       useEffect(() => { loadCatalog(); refreshChannels(); refreshBots() }, [])

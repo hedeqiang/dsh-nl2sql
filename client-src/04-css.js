@@ -478,7 +478,8 @@
 .n2s-ptile[aria-checked=true]{border-color:var(--n2s-accent);background:color-mix(in srgb,var(--n2s-accent) 6%,transparent);box-shadow:0 0 0 1px var(--n2s-accent)}
 .n2s-ptile:focus-visible,.n2s-kindcard:focus-visible{outline:2px solid var(--n2s-accent);outline-offset:2px}
 .n2s-ptile-name{font-size:13.5px;font-weight:600}
-.n2s-kindcards{display:grid;gap:8px;margin-top:8px}
+.n2s-kindcards{display:grid;gap:8px;margin:8px 0 0;padding:0;list-style:none}
+.n2s-kindcard-li{display:grid}
 .n2s-kindcard{display:grid;gap:4px;padding:12px 14px;border-radius:var(--n2s-radius);border:.5px solid var(--n2s-line-2);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
 .n2s-kindcard:hover{border-color:var(--n2s-accent);background:color-mix(in srgb,var(--n2s-accent) 4%,transparent)}
 .n2s-kindcard-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}

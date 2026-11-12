@@ -296,8 +296,11 @@ export const methods = {
   // --------------------------------------------------------- auto overview
 
   /** Build overview widgets for one table from its column roles; runs each query and returns results. */
-  async tableOverview({ datasourceId, table, pin = false }) {
+  async tableOverview({ datasourceId, table, pin = false, actor, sessionId, source = 'ui' }) {
     const ds = this.requireDatasource(datasourceId)
+    // Agent / bot callers run as their actor: scope, row-level rules, viewer limits and audit attribution apply.
+    actor ??= sessionId ? this.actorFor(sessionId) : undefined
+    if (actor) this.assertAccess(actor, ds)
     const schema = await this.visibleSchema(ds)
     const t = schema.tables.find(x => x.name === table)
     if (!t) throw new UserError('nl2sql/unknown-table', `表不存在或无权访问：${table}`)
@@ -305,7 +308,7 @@ export const methods = {
     const results = []
     for (const plan of plans) {
       try {
-        const r = await this.runQuery({ sql: plan.sql, datasourceId: ds.id, title: plan.title, chart: plan.chart, source: 'ui', confirmScan: true })
+        const r = await this.runQuery({ sql: plan.sql, datasourceId: ds.id, sessionId, actor, title: plan.title, chart: plan.chart, source, confirmScan: true })
         results.push(r)
         if (pin) await this.pinWidget({ title: plan.title, sql: plan.sql, datasourceId: ds.id, chart: r.chart, width: plan.width })
       } catch (error) {

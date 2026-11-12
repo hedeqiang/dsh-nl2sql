@@ -13,8 +13,15 @@
           if (!sessionId) return
           let cancelled = false
           ;(async () => {
-            const pending = pendingAsks.shift()
-            if (pending) await call('bindSession', { sessionId, datasourceId: pending.datasourceId }).catch(() => {})
+            const fresh = pendingAsks.length > 0 && !seenSessions.has(sessionId)
+            seenSessions.add(sessionId)
+            if (fresh) {
+              // A session already bound to a data source, or running another preset, is not ours.
+              const info = await call('sessionInfo', { sessionId }).catch(() => null)
+              const candidate = info && !info.boundDatasourceId && (info.preset === PRESET || info.preset === null || info.preset === undefined)
+              const pending = candidate ? claimPendingAsk(sessionId) : null
+              if (pending) await call('bindSession', { sessionId, datasourceId: pending.datasourceId }).catch(() => {})
+            }
             if (!cancelled) await loadSessionInfo(sessionId)
           })()
           if (!store.get().loaded) refreshDatasources()

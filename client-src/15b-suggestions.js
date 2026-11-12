@@ -17,7 +17,7 @@
       if (s.kind === 'example') return h('pre', { className: 'n2s-code', style: { marginTop: 6, maxHeight: 140 } }, prettySql(it.sql ?? ''))
       if (s.kind === 'metric') return h('div', null,
         h('div', { className: 'n2s-mono n2s-small' }, `${it.expression}${it.table ? ` FROM ${it.table}` : ''}${it.filter ? ` WHERE ${it.filter}` : ''}`),
-        (it.timeColumn || it.dimensions?.length) && h('div', { className: 'n2s-muted n2s-small' }, [it.timeColumn && `${t('kb.timeColumn')}: ${it.timeColumn}`, it.dimensions?.length && `${t('kb.dimensions')}: ${it.dimensions.join(uiLang === 'zh' ? '、' : ', ')}`].filter(Boolean).join(' · ')))
+        (it.timeColumn || it.dimensions?.length) && h('div', { className: 'n2s-muted n2s-small' }, [it.timeColumn && `${t('kb.timeColumn')}: ${it.timeColumn}`, it.dimensions?.length && `${t('kb.dimensions')}: ${joinList(it.dimensions)}`].filter(Boolean).join(' · ')))
       if (s.kind === 'note') return h('div', { className: 'n2s-small' }, it.text)
       return h('div', null, h('div', { className: 'n2s-small' }, it.definition), it.sql && h('code', { className: 'n2s-md-code', style: { display: 'inline-block', marginTop: 4 } }, it.sql))
     }
@@ -35,14 +35,17 @@
       const [busy, setBusy] = useState(null)
       const items = list.value?.suggestions ?? []
       const done = () => { list.reload(); onChanged?.() }
+      const inFlight = useRef(new Set())
       const accept = async (s, item) => {
+        if (inFlight.current.has(s.id)) return
+        inFlight.current.add(s.id)
         setBusy(s.id)
         try {
           await call('acceptSuggestion', { datasourceId: ds.id, id: s.id, ...(item ? { item } : {}) })
           setEditing(null)
           notify(t('sg.accepted'), 'ok')
           done()
-        } catch (e) { notifyError(e) } finally { setBusy(null) }
+        } catch (e) { notifyError(e) } finally { inFlight.current.delete(s.id); setBusy(null) }
       }
       const dismiss = async (s) => {
         if (!await confirmDialog({ title: t('sg.dismissConfirm'), confirmLabel: t('sg.dismiss') })) return
@@ -65,8 +68,8 @@
           h('div', { className: 'n2s-row', style: { gap: 4, flexWrap: 'nowrap' } },
             h('button', { type: 'button', className: 'n2s-btn small primary', disabled: busy === s.id, onClick: () => setEditing(s) }, t('sg.accept')),
             h(Dropdown, { label: t('sg.acceptDirect'), trigger: { className: 'n2s-iconbtn', content: Icon.chev(10) }, items: [
-              { label: t('sg.acceptEdit'), icon: Icon.edit(14), onClick: () => setEditing(s) },
-              { label: t('sg.acceptDirect'), icon: Icon.check(14), onClick: () => accept(s) },
+              { label: t('sg.acceptEdit'), icon: Icon.edit(14), disabled: busy === s.id, onClick: () => setEditing(s) },
+              { label: t('sg.acceptDirect'), icon: Icon.check(14), disabled: busy === s.id, onClick: () => accept(s) },
             ] }),
             h('button', { type: 'button', className: 'n2s-btn small ghost', disabled: busy === s.id, onClick: () => dismiss(s) }, t('sg.dismiss')))),
         editing?.id === s.id && h('div', { style: { marginTop: 10 } },

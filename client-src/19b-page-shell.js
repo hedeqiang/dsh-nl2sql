@@ -22,7 +22,7 @@
     }
 
     function AdminArea({ t, ctx, section, sub, onNavigate, ds, datasources }) {
-      const counts = useAsync(() => Promise.all([call('listAlerts').catch(() => []), call('listReports').catch(() => []), call('listChannels').catch(() => []), call('listUsers').catch(() => [])]), [section])
+      const counts = useAsync(() => Promise.all([call('listAlerts').catch(() => []), call('listReports').catch(() => []), call('listChannels').catch(() => []), call('listUsers').catch(() => [])]), [section], [])
       const [alerts, reports, channels, users] = counts.value ?? []
       const badge = { sources: datasources.length, members: users?.length, automation: (alerts?.length ?? 0) + (reports?.length ?? 0), push: channels?.length }
       const firing = (alerts ?? []).filter(a => a.state === 'firing').length
@@ -54,32 +54,49 @@
         const { datasources, loaded, error } = useStore(s => s)
         const [nav, setNavState] = useState(loadNav)
         const setNav = useCallback((patch) => setNavState(n => { const next = { ...n, ...patch }; try { localStorage.setItem(NAV_KEY, JSON.stringify(next)) } catch {} return next }), [])
+        // Leaving 管理 → 设置 with unsaved settings asks first (SettingsPage sets fbCtx.settingsDirty).
+        const navRef = useRef(nav)
+        navRef.current = nav
+        const guardedNav = useCallback(async (patch) => {
+          const cur = navRef.current
+          const next = { ...cur, ...patch }
+          const inSettings = cur.tab === 'admin' && cur.section === 'settings'
+          const leaving = inSettings && (next.tab !== 'admin' || next.section !== 'settings')
+          if (leaving && fbCtx.settingsDirty) {
+            const ok = await confirmDialog({ title: t('set.leaveTitle'), message: t('set.leaveMsg'), confirmLabel: t('set.leaveOk'), danger: true })
+            if (!ok) return false
+            fbCtx.settingsDirty = false
+          }
+          setNav(patch)
+          return true
+        }, [])
         const [selectedId, setSelectedId] = useState(null)
         useEffect(() => { refreshDatasources() }, [])
         const ds = datasources.find(d => d.id === selectedId) ?? datasources.find(d => d.current) ?? datasources[0]
         const needsSource = loaded && datasources.length === 0 && ['schema', 'knowledge'].includes(nav.tab)
         const ask = useCallback((question) => {
           if (!ds) return
-          const pending = { datasourceId: ds.id, question }
-          pendingAsks.push(pending)
-          setTimeout(() => { const i = pendingAsks.indexOf(pending); if (i >= 0) pendingAsks.splice(i, 1) }, 60000)
+          const pending = addPendingAsk(ds.id, question)
           try {
-            ctx.uiWorkspace.startSession(undefined, { agentPreset: PRESET, prompt: question, whenDraftExists: 'replace' })
+            const r = ctx.uiWorkspace.startSession(undefined, { agentPreset: PRESET, prompt: question, whenDraftExists: 'replace' })
+            // Hosts that return the new session id (directly or as a promise) pin the ask to it.
+            const adopt = (id) => { if (typeof id === 'string' && id) pending.sessionId = id }
+            if (r && typeof r.then === 'function') r.then(adopt, () => {}); else adopt(r)
           } catch (e) {
+            const i = pendingAsks.indexOf(pending); if (i >= 0) pendingAsks.splice(i, 1)
             notifyError(e)
           }
         }, [ds?.id])
         fbCtx.openSession = (id) => ctx.uiWorkspace.openSession(id)
-        fbCtx.navigate = (patch) => setNav(patch)
+        fbCtx.navigate = (patch) => { guardedNav(patch) }
         const tabs = [...PRIMARY_TABS, 'admin']
         const onTabKey = (e) => {
           if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
           const i = tabs.indexOf(nav.tab)
           const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]
-          setNav({ tab: next })
-          setTimeout(() => document.getElementById(`n2s-tab-${next}`)?.focus(), 0)
+          guardedNav({ tab: next }).then(ok => { if (ok) setTimeout(() => document.getElementById(`n2s-tab-${next}`)?.focus(), 0) })
         }
-        const tabBtn = (k) => h('button', { key: k, type: 'button', role: 'tab', id: `n2s-tab-${k}`, className: `n2s-tab${k === 'admin' ? ' admin' : ''}`, tabIndex: nav.tab === k ? 0 : -1, 'aria-selected': nav.tab === k, onClick: () => setNav({ tab: k }) },
+        const tabBtn = (k) => h('button', { key: k, type: 'button', role: 'tab', id: `n2s-tab-${k}`, className: `n2s-tab${k === 'admin' ? ' admin' : ''}`, tabIndex: nav.tab === k ? 0 : -1, 'aria-selected': nav.tab === k, onClick: () => { guardedNav({ tab: k }) } },
           k === 'admin' && AdminIcons.settings(), t(`tab.${k}`))
         const status = !ds ? 'off' : ds.lastTestOk === false ? 'err' : ''
         const showPicker = datasources.length > 0 && nav.tab !== 'admin'
@@ -94,20 +111,19 @@
                   h('span', { className: 'name' }, ds?.name ?? '—'),
                   ds && h('span', { className: 'meta' }, typeLabel(t, ds.type)),
                   Icon.chev(10),
-                  h('select', { 'aria-label': t('ds.select'), value: ds?.id ?? '', onChange: async (e) => { const id = e.target.value; setSelectedId(id); await call('setCurrent', { id }).catch(() => {}); refreshDatasources() } },
+                  h('select', { 'aria-label': t('ds.select'), value: ds?.id ?? '', onChange: async (e) => { const id = e.target.value; setSelectedId(id); try { await call('setCurrent', { id }) } catch (err) { notifyError(err) } refreshDatasources() } },
                     datasources.map(d => h('option', { key: d.id, value: d.id }, `${d.name} · ${typeLabel(t, d.type)}${d.type === 'sqlite' ? '' : ` · ${d.database}`}`))))),
               h('div', { className: 'n2s-tabs', role: 'tablist', 'aria-label': t('page.title'), onKeyDown: onTabKey }, PRIMARY_TABS.map(tabBtn), h('span', { className: 'n2s-grow' }), tabBtn('admin'))),
             h('div', { className: 'n2s-body', role: 'tabpanel', 'aria-labelledby': `n2s-tab-${nav.tab}` },
               error && h('div', { className: 'n2s-notice err', style: { marginBottom: 12 } }, error),
               !loaded ? h('div', { style: { display: 'grid', gap: 12 } }, h('div', { className: 'n2s-skel', style: { height: 120 } }), h('div', { className: 'n2s-skel', style: { height: 60 } })) :
-                needsSource ? h(EmptySourceHint, { t, onGo: () => setNav({ tab: 'admin', section: 'sources' }) }) :
-                nav.tab === 'ask' ? h(AskTab, { t, ds, datasources, onAsk: ask, presetReady: true, onNavigate: setNav }) :
-                nav.tab === 'schema' ? h(SchemaTab, { t, ds, onAskTable: (tb) => ask(fmt(t, 'ask.tablePrompt', { name: tb.name, comment: tb.comment ? `（${tb.comment}）` : '' })) }) :
-                nav.tab === 'knowledge' ? h(KnowledgeTab, { t, ds }) :
+                needsSource ? h(EmptySourceHint, { t, onGo: () => guardedNav({ tab: 'admin', section: 'sources' }) }) :
+                nav.tab === 'ask' ? h(AskTab, { t, ds, datasources, onAsk: ask, presetReady: true, onNavigate: guardedNav }) :
+                nav.tab === 'schema' ? h(SchemaTab, { t, ds, onAskTable: (tb) => ask(fmt(t, 'ask.tablePrompt', { name: tb.name, comment: paren(tb.comment) })) }) :
+                nav.tab === 'knowledge' ? h(KnowledgeTab, { key: `kb:${ds?.id ?? ''}`, t, ds }) :
                 nav.tab === 'history' ? h(HistoryTab, { t, datasources, onOpenSession: (id) => ctx.uiWorkspace.openSession(id) }) :
                 nav.tab === 'dashboard' ? h(DashboardTab, { t, ds, datasources }) :
-                h(AdminArea, { t, ctx, section: ADMIN_SECTIONS.includes(nav.section) ? nav.section : 'sources', sub: nav.sub, onNavigate: setNav, ds, datasources }))),
-            h(FeedbackLayer, { t })))
+                h(AdminArea, { t, ctx, section: ADMIN_SECTIONS.includes(nav.section) ? nav.section : 'sources', sub: nav.sub, onNavigate: guardedNav, ds, datasources })))))
       }
     }
 

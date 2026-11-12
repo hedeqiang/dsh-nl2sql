@@ -12,7 +12,7 @@
         const id = setInterval(() => { runs.reload(); set.reload() }, 3000)
         return () => clearInterval(id)
       }, [latest?.status, latest?.id])
-      const detail = useAsync(() => (open ? call('getEvalRun', { id: open }) : null), [open, latest?.done])
+      const detail = useAsync(() => (open ? call('getEvalRun', { id: open }) : null), [open, latest?.done], [open])
       const start = async () => { setError(null); try { await call('runEval', { datasourceId: ds.id, mode }); runs.reload() } catch (e) { setError(e.message) } }
       const cases = set.value ?? []
       return h('div', null,
@@ -37,7 +37,7 @@
           c.status !== 'pass' && c.actualSql && h('details', { style: { marginTop: 6 } }, h('summary', { className: 'n2s-small n2s-muted', style: { cursor: 'pointer' } }, t('ev.compareSql')),
             h('div', { className: 'n2s-form', style: { marginTop: 6 } }, h('pre', { className: 'n2s-code' }, prettySql(c.expectedSql)), h('pre', { className: 'n2s-code' }, prettySql(c.actualSql))))))),
         !open && cases.length > 0 && h('div', { className: 'n2s-list2', style: { marginTop: 12 } }, cases.map(c => h('div', { key: c.id, className: 'n2s-list2-row', style: { padding: '8px 16px' } },
-          h('input', { type: 'checkbox', checked: c.enabled, 'aria-label': t('ev.include'), onChange: async (e) => { await call('setEvalCase', { datasourceId: ds.id, id: c.id, enabled: e.target.checked }); set.reload() } }),
+          h('input', { type: 'checkbox', checked: c.enabled, 'aria-label': t('ev.include'), onChange: async (e) => { try { await call('setEvalCase', { datasourceId: ds.id, id: c.id, enabled: e.target.checked }) } catch (err) { notifyError(err) } set.reload() } }),
           h('span', { className: 'n2s-grow n2s-ellipsis' }, c.question),
           c.lastStatus && h('span', { className: `n2s-statusdot ${c.lastStatus === 'pass' ? 'ok' : c.lastStatus === 'fail' ? 'warn' : 'err'}` }, t(`ev.status.${c.lastStatus}`))))))
     }

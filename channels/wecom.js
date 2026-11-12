@@ -36,7 +36,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto'
 import { ChannelError, postJson } from './http.js'
-import { renderChartPng as defaultRenderChartPng, chartable, resultMeta, isKpi, kpiText, resultAsMarkdownTable, toPlainMarkdown, mentionsAll, splitText } from './message.js'
+import { renderChartPng as defaultRenderChartPng, chartable, cellText, defangMd, fmtNum, resultMeta, isKpi, kpiText, resultAsMarkdownTable, toPlainMarkdown, mentionsAll, splitText } from './message.js'
 
 export const WEBHOOK_HOST = 'https://qyapi.weixin.qq.com'
 export const DEFAULT_GATEWAY = 'wss://openws.work.weixin.qq.com'
@@ -95,8 +95,9 @@ export function toWecomMarkdown(md) {
 }
 
 function resultBlock(r, { includeSql, maxRows = 10, table = true } = {}) {
-  const head = `**${r.title || '查询结果'}**  ${resultMeta(r)}`
-  if (r.error) return `${head}\n${r.error}`
+  // Data-derived text (title, error, values) is defanged: no links / tags / mentions from data.
+  const head = `**${defangMd(r.title || '查询结果')}**  ${resultMeta(r)}`
+  if (r.error) return `${head}\n${defangMd(r.error)}`
   const lines = [head]
   if (!r.rows?.length) lines.push('无数据')
   else if (isKpi(r)) lines.push(kpiText(r, { separator: '\n' }))
@@ -109,7 +110,7 @@ function resultBlock(r, { includeSql, maxRows = 10, table = true } = {}) {
 function resultAsText(r, maxRows) {
   const cols = r.columns.slice(0, 6)
   const rows = r.rows.slice(0, maxRows)
-  const out = [`> ${cols.map(c => c.name).join(' ｜ ')}`, ...rows.map(row => `> ${cols.map((c, i) => String(row[i] ?? '')).join(' ｜ ')}`)]
+  const out = [`> ${cols.map(c => defangMd(c.name)).join(' ｜ ')}`, ...rows.map(row => `> ${cols.map((c, i) => defangMd(c.kind === 'number' ? fmtNum(row[i]) : cellText(row[i], 60))).join(' ｜ ')}`)]
   if ((r.rowCount ?? r.rows.length) > rows.length) out.push(`<font color="comment">…共 ${r.rowCount ?? r.rows.length} 行</font>`)
   return out.join('\n')
 }
@@ -121,19 +122,19 @@ function resultAsText(r, maxRows) {
 export function planWebhook(message) {
   const sections = []
   const images = []
-  if (message.title) sections.push(`## ${message.title}`)
+  if (message.title) sections.push(`## ${defangMd(message.title)}`)
   if (message.text) sections.push(message.text)
   let hasTable = /(^|\n)\|[^\n]*\|\s*\n\|[\s:|-]+\|/.test(message.text ?? '')
   for (const r of (message.results ?? []).slice(0, 10)) {
     if (message.chartMode !== 'table' && !r.error && chartable(r)) {
-      sections.push(`**${r.title || '查询结果'}**  ${resultMeta(r)}（见下方图表）${r.sql && message.includeSql ? '\n```sql\n' + r.sql.slice(0, 1500) + '\n```' : ''}`)
+      sections.push(`**${defangMd(r.title || '查询结果')}**  ${resultMeta(r)}（见下方图表）${r.sql && message.includeSql ? '\n```sql\n' + r.sql.slice(0, 1500) + '\n```' : ''}`)
       images.push({ msgtype: 'image', result: r })
       continue
     }
     if (r.rows?.length && !isKpi(r) && !r.error) hasTable = true
     sections.push(resultBlock(r, { includeSql: message.includeSql }))
   }
-  if (message.footer) sections.push(message.footer)
+  if (message.footer) sections.push(defangMd(toPlainMarkdown(message.footer, { mentionAll: '' })))
   const md = sections.filter(Boolean).join('\n\n')
   const msgtype = hasTable ? 'markdown_v2' : 'markdown'
   const content = msgtype === 'markdown_v2' ? toPlainMarkdown(md, { mentionAll: '' }) : toWecomMarkdown(md)
@@ -238,10 +239,10 @@ function inboundText(body) {
 
 function aibotMarkdown(message) {
   const parts = []
-  if (message.title) parts.push(`**${message.title}**`)
+  if (message.title) parts.push(`**${defangMd(message.title)}**`)
   if (message.text) parts.push(toPlainMarkdown(message.text, { mentionAll: '' }))
   for (const r of (message.results ?? []).slice(0, 10)) parts.push(resultBlock(r, { includeSql: message.includeSql }))
-  if (message.footer) parts.push(toPlainMarkdown(message.footer, { mentionAll: '' }))
+  if (message.footer) parts.push(defangMd(toPlainMarkdown(message.footer, { mentionAll: '' })))
   return parts.join('\n\n')
 }
 

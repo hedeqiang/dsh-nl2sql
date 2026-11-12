@@ -28,11 +28,12 @@
       }
       const quoteTable = (name) => ds.type === 'mysql' ? `\`${name.replace(/`/g, '``')}\`` : ds.type === 'postgres' ? name.split('.').map(p => `"${p.replace(/"/g, '""')}"`).join('.') : `"${name.replace(/"/g, '""')}"`
       const runOverview = async (tb, pin) => {
+        const forId = ds.id
         setPreview({ busy: true })
         try {
-          const res = await call('tableOverview', { datasourceId: ds.id, table: tb.name, pin })
-          setPreview({ overview: res.results, pinned: pin })
-        } catch (e) { setPreview({ error: e.message }) }
+          const res = await call('tableOverview', { datasourceId: forId, table: tb.name, pin })
+          if (currentDs.current === forId) setPreview({ overview: res.results, pinned: pin })
+        } catch (e) { if (currentDs.current === forId) setPreview({ error: e.message }) }
       }
       // Default to the largest fact table so the detail pane is never blank.
       const defaultTable = schema ? ([...schema.tables].sort((x, y) => (y.role === 'fact') - (x.role === 'fact') || (y.rows ?? 0) - (x.rows ?? 0))[0]?.name ?? null) : null

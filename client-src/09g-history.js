@@ -1,6 +1,6 @@
     function HistoryTab({ t, datasources, onOpenSession }) {
       const [filters, setFilters] = useState({ status: '', source: '', datasourceId: '', search: '' })
-      const list = useAsync(() => call('listHistory', { ...filters, limit: 300 }), [filters.status, filters.source, filters.datasourceId, filters.search])
+      const list = useAsync(() => call('listHistory', { ...filters, limit: 300 }), [filters.status, filters.source, filters.datasourceId, filters.search], [])
       const [open, setOpen] = useState(null)
       const [rerun, setRerun] = useState(null)
       const [removed, setRemoved] = useState(() => new Set())
@@ -26,13 +26,7 @@
       }, [rows])
       const [search, setSearch] = useState('')
       useEffect(() => { const id = setTimeout(() => setFilters(f => (f.search === search ? f : { ...f, search })), 250); return () => clearTimeout(id) }, [search])
-      const rel = (at) => {
-        const d = (Date.now() - at) / 1000
-        if (d < 60) return t('time.justNow')
-        if (d < 3600) return fmt(t, 'time.minAgo', { n: Math.floor(d / 60) })
-        if (d < 86400) return fmt(t, 'time.hourAgo', { n: Math.floor(d / 3600) })
-        return new Date(at).toLocaleDateString()
-      }
+      const rel = (at) => relTime(t, at)
       const statusDot = (st) => h('span', { className: `n2s-statusdot ${st === 'error' ? 'err' : st === 'blocked' ? 'warn' : 'ok'}` }, t(`hist.status.${st ?? 'ok'}`))
       const oneLine = (sql) => sql.replace(/\s+/g, ' ').trim()
       return h('div', null,
@@ -47,7 +41,7 @@
           h(Dropdown, { label: t('result.more'), trigger: { content: Icon.more() }, items: [
             { label: t('hist.export'), icon: Icon.download(14), disabled: rows.length === 0, onClick: exportCsv },
             { divider: true },
-            { label: t('hist.clear'), icon: Icon.trash(14), danger: true, onClick: async () => { if (await confirmDialog({ title: t('hist.clearConfirm'), danger: true })) { await call('clearHistory'); list.reload() } } },
+            { label: t('hist.clear'), icon: Icon.trash(14), danger: true, onClick: async () => { if (await confirmDialog({ title: t('hist.clearConfirm'), danger: true })) { try { await call('clearHistory') } catch (e) { notifyError(e) } list.reload() } } },
           ] })),
         list.error && h('div', { className: 'n2s-notice err' }, list.error.message),
         list.loading && !list.value && h('div', { className: 'n2s-skel', style: { height: 240 } }),
@@ -61,7 +55,7 @@
               h('span', { className: 'n2s-hist-what' },
                 h('span', { className: `n2s-hist-title ${r.title ? '' : 'none'}` }, r.title || r.error?.slice(0, 80) || t('hist.untitled')),
                 h('span', { className: 'n2s-hist-sql', title: oneLine(r.sql).slice(0, 400) }, oneLine(r.sql).slice(0, 300))),
-              h('span', { className: 'n2s-hist-when' }, h('span', { title: new Date(r.at).toLocaleString() }, rel(r.at)), h('span', { className: 'src' }, `${t(`hist.source.${r.source}`)} · ${r.datasourceName ?? ''}`)),
+              h('span', { className: 'n2s-hist-when' }, h('span', { title: new Date(r.at).toLocaleString(uiLocale()) }, rel(r.at)), h('span', { className: 'src' }, `${sourceLabel(t, r.source)} · ${r.datasourceName ?? ''}`)),
               h('span', { className: 'n2s-hist-num' }, r.rows !== undefined ? fmt(t, 'result.rows', { count: r.rows }) : '—', h('br'), r.elapsedMs !== undefined ? `${r.elapsedMs} ms` : ''),
               h('span', { className: 'n2s-hist-chev' }, Icon.chev(12))),
             h('button', { type: 'button', className: 'n2s-iconbtn n2s-rowdel', title: t('hist.deleteOne'), 'aria-label': `${t('hist.deleteOne')}: ${r.title || t('hist.untitled')}`, onClick: () => removeRow(r) }, Icon.trash(14))),
@@ -71,7 +65,7 @@
                 h('pre', { className: 'n2s-code', style: { maxHeight: 220, paddingRight: 44 } }, prettySql(r.sql)),
                 h('button', { type: 'button', className: 'n2s-iconbtn', style: { position: 'absolute', top: 6, right: 6 }, title: t('result.copy'), 'aria-label': t('result.copy'), onClick: () => navigator.clipboard?.writeText(r.sql) }, Icon.copy(14))),
               h('div', { className: 'n2s-row' },
-                h('span', { className: 'n2s-faint n2s-small n2s-grow' }, new Date(r.at).toLocaleString()),
+                h('span', { className: 'n2s-faint n2s-small n2s-grow' }, new Date(r.at).toLocaleString(uiLocale())),
                 r.sessionId && h('button', { type: 'button', className: 'n2s-btn small ghost', onClick: () => onOpenSession(r.sessionId) }, Icon.external(13), t('hist.openSession')),
                 h('button', {
                   type: 'button', className: 'n2s-btn small',
@@ -83,4 +77,13 @@
                 h('button', { type: 'button', className: 'n2s-btn small ghost danger-text', onClick: () => removeRow(r) }, Icon.trash(13), t('ds.delete'))),
               rerun?.id === r.id && (rerun.busy ? h('div', { className: 'n2s-skel', style: { height: 200 } }) : rerun.error ? h('div', { className: 'n2s-notice err' }, rerun.error) : h('div', { className: 'n2s-card' }, h(ResultView, { result: rerun.result, t, hideSql: true })))))
         })))
+    }
+
+    const HIST_SOURCES = ['agent', 'ui', 'dashboard', 'alert', 'eval', 'larkbot', 'telegrambot', 'wecombot', 'dingtalkbot']
+    /** Label of a history `source`; unknown sources (a new bot platform…) fall back to a generic label. */
+    function sourceLabel(t, source) {
+      if (!source) return t('hist.source.unknown')
+      if (HIST_SOURCES.includes(source)) return t(`hist.source.${source}`)
+      const bot = /^(.+)bot$/.exec(source)
+      return bot ? fmt(t, 'hist.source.genericBot', { platform: bot[1] }) : source
     }

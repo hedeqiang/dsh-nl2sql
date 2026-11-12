@@ -35,6 +35,29 @@ const toast = (type, content) => ({ toast: { type, content } })
 const label = (platform) => PLATFORM_LABEL[platform] ?? platform ?? 'IM'
 const SOURCE = (platform) => `${platform ?? 'im'}bot`
 
+const BARE_COMMANDS = {
+  帮助: 'help', help: 'help', start: 'help',
+  数据源: 'sources', sources: 'sources', datasources: 'sources',
+  自动: 'auto', auto: 'auto',
+  新对话: 'reset', new: 'reset', reset: 'reset',
+}
+
+/**
+ * A bot command, or null for a question. Argument-less commands must be the whole
+ * message (optionally `/`-prefixed, trailing punctuation ignored), so questions like
+ * 「自动续费用户有多少」 reach the agent. `切换` / `切换数据源` / `switch` / `use` take an
+ * argument after whitespace; alone they ask for usage.
+ * → { verb: 'help'|'sources'|'auto'|'reset'|'switch', arg? }
+ */
+export function parseBotCommand(text) {
+  const s = String(text ?? '').trim().replace(/^\//, '').replace(/[\s?？。.!！~～]+$/u, '')
+  const bare = BARE_COMMANDS[s.toLowerCase()]
+  if (bare) return { verb: bare }
+  const m = /^(切换数据源|切换|switch|use)(?:\s+([\s\S]+))?$/i.exec(s)
+  if (m) return { verb: 'switch', arg: (m[2] ?? '').trim() }
+  return null
+}
+
 function hasAggregate(r, dialect) {
   const parsed = parseSelect(r.baseSql ?? r.sql, { dialect })
   return Boolean(parsed?.select?.some(i => i.isAggregate))
@@ -286,8 +309,8 @@ export const methods = {
     if (m.chatType === 'group' && m.chatId) this.noteSeenIdentity({ platform, kind: 'chat', id: String(m.chatId), name: chatName, chatName, channelId: m.channelId, refused: Boolean(resolved.refused) })
     if (resolved.refused) { await this.save(); await reply(resolved.refused); return }
     const actor = resolved.actor
-    // Commands: 帮助 / 数据源 / 切换 <名称> / 新对话
-    const cmd = text.match(/^\/?(帮助|help|数据源|切换数据源|切换|自动|auto|新对话|reset|start)\s*(.*)$/i)
+    // Commands: 帮助 / 数据源 / 切换 <名称> / 自动 / 新对话 (and English aliases).
+    const cmd = parseBotCommand(text)
     // Members with different scopes must not share a conversation: per-user sessions
     // whenever the sender's effective scope or rules differ from the chat's.
     const scopeSig = JSON.stringify([actor.datasourceIds, actor.role, actor.rowRules ?? []])
@@ -301,14 +324,15 @@ export const methods = {
     const allowedDs = this.state.datasources.filter(d => !Array.isArray(actor.datasourceIds) || actor.datasourceIds.includes(d.id))
     if (conv.datasourceId && !allowedDs.some(d => d.id === conv.datasourceId)) conv.datasourceId = allowedDs[0]?.id ?? null
     if (cmd) {
-      const verb = cmd[1].toLowerCase()
-      if (verb === '帮助' || verb === 'help' || verb === 'start') { await reply(`直接${m.chatType === 'group' ? ' @我 ' : ''}提问即可，例如「上周每天的订单量」。\n命令：数据源（查看可用数据源）、切换 <名称>、自动（按问题自动选择数据源）、新对话。\n当前数据源：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${conv.datasourcePinned ? '（已指定）' : allowedDs.length > 1 ? '（按问题自动选择）' : ''}${actor.role === 'viewer' ? '\n你是只读成员：可以查询指标库中的指标、已验证的常见问题和看板。' : ''}`); return }
-      if (verb === '数据源') { await reply(`可用数据源：\n${allowedDs.map(d => `· ${d.name}${d.description ? ` — ${d.description}` : ''}`).join('\n') || '无'}\n当前：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${conv.datasourcePinned ? '（已指定，发送「自动」恢复按问题自动选择）' : allowedDs.length > 1 ? '（按问题自动选择；发送「切换 <名称>」固定）' : ''}`); return }
-      if (verb === '自动' || verb === 'auto') { delete conv.datasourcePinned; convs[key] = conv; await this.save(); await reply(`已改为按问题自动选择数据源（可用：${allowedDs.map(d => d.name).join('、')}）。`); return }
-      if (verb === '新对话' || verb === 'reset') { conv.sessionId = null; convs[key] = conv; await this.save(); await reply('已开始新对话。'); return }
-      const want = cmd[2].trim().toLowerCase()
-      const target = allowedDs.find(d => d.name.toLowerCase() === want || d.id === cmd[2].trim()) ?? (want ? allowedDs.filter(d => d.name.toLowerCase().includes(want) || (d.database ?? '').toLowerCase() === want) : []).find((_, __, arr) => arr.length === 1)
-      if (!target) { await reply(`找不到可用的数据源「${cmd[2]}」。可用：${allowedDs.map(d => d.name).join('、')}`); return }
+      const { verb } = cmd
+      if (verb === 'help') { await reply(`直接${m.chatType === 'group' ? ' @我 ' : ''}提问即可，例如「上周每天的订单量」。\n命令（单独发送）：\n· 数据源 / sources — 查看可用数据源\n· 切换 <名称> / switch <name> — 固定使用某个数据源\n· 自动 / auto — 按问题自动选择数据源\n· 新对话 / new — 开始新对话\n· 帮助 / help — 显示本说明\n当前数据源：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${conv.datasourcePinned ? '（已指定）' : allowedDs.length > 1 ? '（按问题自动选择）' : ''}${actor.role === 'viewer' ? '\n你是只读成员：可以查询指标库中的指标、已验证的常见问题和看板。' : ''}`); return }
+      if (verb === 'sources') { await reply(`可用数据源：\n${allowedDs.map(d => `· ${d.name}${d.description ? ` — ${d.description}` : ''}`).join('\n') || '无'}\n当前：${this.findDatasource(conv.datasourceId)?.name ?? '未选择'}${conv.datasourcePinned ? '（已指定，发送「自动」恢复按问题自动选择）' : allowedDs.length > 1 ? '（按问题自动选择；发送「切换 <名称>」固定）' : ''}`); return }
+      if (verb === 'auto') { delete conv.datasourcePinned; convs[key] = conv; await this.save(); await reply(`已改为按问题自动选择数据源（可用：${allowedDs.map(d => d.name).join('、')}）。`); return }
+      if (verb === 'reset') { conv.sessionId = null; convs[key] = conv; await this.save(); await reply('已开始新对话。'); return }
+      if (!cmd.arg) { await reply(`用法：切换 <数据源名称>（或 switch <name>）。可用：${allowedDs.map(d => d.name).join('、') || '无'}`); return }
+      const want = cmd.arg.toLowerCase()
+      const target = allowedDs.find(d => d.name.toLowerCase() === want || d.id === cmd.arg) ?? allowedDs.filter(d => d.name.toLowerCase().includes(want) || (d.database ?? '').toLowerCase() === want).find((_, __, arr) => arr.length === 1)
+      if (!target) { await reply(`找不到可用的数据源「${cmd.arg}」。可用：${allowedDs.map(d => d.name).join('、')}`); return }
       conv.datasourceId = target.id
       conv.datasourcePinned = true
       if (conv.sessionId) { this.state.sessions[conv.sessionId] = target.id }
@@ -417,7 +441,8 @@ export const methods = {
     for (const d of list) {
       let tables = ''
       try {
-        const schema = this.schemas.get(d.id) ?? await this.readSchemaFile(d.id)
+        // Policy-filtered, like nl2sql_schema: hidden tables never reach the bot prompt.
+        const schema = await this.cachedVisibleSchema(d)
         if (schema?.tables?.length) {
           const rank = { fact: 0, dimension: 1, view: 2, other: 3, log: 4, config: 5 }
           const top = [...schema.tables].sort((a, b) => (rank[a.role] ?? 3) - (rank[b.role] ?? 3) || (b.rows ?? 0) - (a.rows ?? 0)).slice(0, 12)
@@ -475,7 +500,8 @@ export const methods = {
     }
     const waited = await controller.wait({ sessionId: sid, timeoutMs, maxMessages: 1 }, new AbortController().signal)
     const reason = waited?.reason ?? 'idle'
-    if (reason !== 'idle') { try { controller.cancel({ sessionId: sid }) } catch {} }
+    // cancel() is async on DSH controllers: a rejection must not become unhandled.
+    if (reason !== 'idle') void Promise.resolve().then(() => controller.cancel({ sessionId: sid })).catch(() => {})
     const answer = await this.collectTurnByRequest(sid, requestId)
     return { sessionId: sid, reason, ...answer }
   },

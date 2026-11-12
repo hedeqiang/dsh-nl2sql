@@ -204,8 +204,11 @@
       const [sending, setSending] = useState(false)
       const [rating, setRating] = useState(null)
       const [drill, setDrill] = useState(null)
+      const ratingBusy = useRef(false)
       useEffect(() => { setType(result.chart?.type ?? 'table') }, [result.resultId])
       const rate = async (value, comment) => {
+        if (ratingBusy.current) return
+        ratingBusy.current = true
         try {
           await call('submitFeedback', { resultId: result.resultId, rating: value, comment, question, sql: result.baseSql ?? result.sql, datasourceId: result.datasourceId, title: result.title, sessionId: onFeedback?.sessionId })
           setRated(value)
@@ -213,11 +216,15 @@
           if (value === 'down') onFeedback?.down?.(comment)
         } catch (e) {
           notifyError(e)
+        } finally {
+          ratingBusy.current = false
         }
       }
       const chart = useMemo(() => (type === result.chart?.type ? result.chart : chartFor(type, result, result.suggestedChart ?? result.chart)) ?? { type: 'table' }, [type, result])
       const available = useMemo(() => CHART_CHOICES.filter(c => c === 'table' || chartFor(c, result, result.chart)), [result])
-      const pin = async () => {
+      const [pinning, runPin] = useBusy()
+      const pin = () => runPin(async () => {
+        if (pinned) return
         try {
           await call('pinWidget', { title: result.title || result.sql.slice(0, 60), sql: result.sql, datasourceId: result.datasourceId, chart })
           setPinned(true)
@@ -225,8 +232,9 @@
         } catch (e) {
           notifyError(e)
         }
-      }
-      const saveExample = async () => {
+      })
+      const [savingExample, runSaveExample] = useBusy()
+      const saveExample = () => runSaveExample(async () => {
         const q = await promptDialog({ title: t('kb.examplePrompt'), value: question || result.title || '' })
         if (!q) return
         try {
@@ -235,7 +243,7 @@
         } catch (e) {
           notifyError(e)
         }
-      }
+      })
       const rerun = async (confirmScan) => {
         setRunning(true); setEditError(null)
         try {
@@ -279,7 +287,7 @@
         isChart && result.chart?.x && result.rows.length >= 2 && { label: t('drill.why'), icon: Icon.spark(14), onClick: () => setDrill({ mode: 'why' }) },
         isChart && chartInstance && { label: t('result.png'), icon: Icon.download(14), onClick: exportPng },
         !hidden && { divider: true },
-        !hidden && { label: savedExample ? t('kb.exampleSaved') : t('kb.saveExample'), icon: Icon.spark(14), disabled: savedExample, onClick: saveExample },
+        !hidden && { label: savedExample ? t('kb.exampleSaved') : t('kb.saveExample'), icon: Icon.spark(14), disabled: savedExample || savingExample, onClick: saveExample },
       ]
       const chartPicker = result.rows.length > 0 && h(Dropdown, {
         label: t('result.chartType'),
@@ -306,7 +314,7 @@
           embedded && h('span', { className: 'n2s-faint n2s-small' }, fmt(t, 'result.rows', { count: result.rowCount }), ' · ', fmt(t, 'result.elapsed', { ms: result.elapsedMs })),
           !hidden && h('button', { type: 'button', className: 'n2s-iconbtn', 'aria-pressed': rated === 'up', title: t('fb.up'), 'aria-label': t('fb.up'), onClick: () => rate('up') }, Icon.thumbUp()),
           !hidden && h('button', { type: 'button', className: 'n2s-iconbtn', 'aria-pressed': rated === 'down' || rating === 'down', title: t('fb.down'), 'aria-label': t('fb.down'), onClick: () => setRating(rating === 'down' ? null : 'down') }, Icon.thumbDown()),
-          !hidden && h('button', { type: 'button', className: 'n2s-iconbtn', disabled: pinned, 'aria-pressed': pinned, title: pinned ? t('result.pinned') : t('result.pin'), 'aria-label': t('result.pin'), onClick: pin }, Icon.pin()),
+          !hidden && h('button', { type: 'button', className: 'n2s-iconbtn', disabled: pinned || pinning, 'aria-busy': pinning || undefined, 'aria-pressed': pinned, title: pinned ? t('result.pinned') : t('result.pin'), 'aria-label': t('result.pin'), onClick: pin }, Icon.pin()),
           h('button', { type: 'button', className: 'n2s-iconbtn', title: t('im.share'), 'aria-label': t('im.share'), onClick: () => setSending(true) }, Icon.send()),
           h(Dropdown, { label: t('result.more'), trigger: { content: Icon.more() }, items: moreItems })),
         rating === 'down' && h(FeedbackForm, { t, onCancel: () => setRating(null), onSubmit: (comment) => rate('down', comment) }),

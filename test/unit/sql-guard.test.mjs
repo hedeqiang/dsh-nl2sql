@@ -111,4 +111,33 @@ await test('prepared SQL runs on the SQLite driver', async () => {
   } finally { await drv.close() }
 })
 
+await test('mysql `--` starts a comment only before a char <= 0x20 or end of input', async () => {
+  const { lexSql, dashDashCommentFollower } = await plugin('sql-guard.js')
+  const kinds = (sql, dialect = 'mysql') => lexSql(sql, { dialect }).segments.map(s => s.kind)
+  for (const ch of [' ', '\t', '\n', '\v', '\f', '\x01', '\x1f', undefined]) assert.equal(dashDashCommentFollower(ch), true, JSON.stringify(ch))
+  for (const ch of ['\u00a0', '\u2000', '\u3000', '\ufeff', '1', 'a']) assert.equal(dashDashCommentFollower(ch), false, JSON.stringify(ch))
+  // U+00A0 after `--` is NOT a comment in MySQL (JS \s says it is)
+  assert.deepEqual(kinds('select 1 --\u00a0x'), ['code'])
+  // a control char after `--` IS a comment in MySQL
+  assert.deepEqual(kinds("select 1 --\x01 'x"), ['code', 'comment'])
+  assert.deepEqual(kinds('select 1--1'), ['code'])
+  assert.deepEqual(kinds('select 1--'), ['code', 'comment'])
+  // PostgreSQL / SQLite / ES: `--` always starts a comment
+  for (const d of ['postgres', 'sqlite', 'elasticsearch']) assert.deepEqual(kinds('select 1--1', d), ['code', 'comment'], d)
+})
+await test('control and non-ASCII whitespace refused outside literals, every dialect', () => {
+  for (const d of ['mysql', 'postgres', 'sqlite', 'elasticsearch']) {
+    for (const ch of ['\u00a0', '\u2028', '\u3000', '\ufeff', '\x01', '\x1f', '\x0b', '\x0c', '\x00', '\u200b']) {
+      assert.throws(() => admitSql(`select 1 as a${ch}from t`, { dialect: d }), /U\+/, `${d} ${JSON.stringify(ch)}`)
+    }
+    // still fine inside strings and quoted identifiers, and \t \n \r are fine
+    assert.equal(admits("select 'a\u00a0b\x01' as x\t\r\nfrom t", d), true, d)
+  }
+  assert.equal(admits('select `a\u00a0b` from t', 'mysql'), true)
+  assert.equal(admits('select "a\u3000b" from t', 'postgres'), true)
+  // the reported bypasses
+  assert.throws(() => admitSql("SELECT 1 AS \u00a0 FROM wallets HAVING 0--\u00a0 UNION ALL SELECT count(*) FROM callback_configs"), /U\+00A0/)
+  assert.throws(() => admitSql("SELECT 1 AS x --\u0001 '\nUNION ALL SELECT count(*) FROM callback_configs -- '"), /U\+0001/)
+})
+
 summary('sql-guard')

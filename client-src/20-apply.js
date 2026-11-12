@@ -12,6 +12,9 @@
         }, 'nl2sql: styles')
         ctx.effect(() => ctx.locale.register(NS, { zh, en, 'zh-CN': zh }), 'nl2sql: locale')
         const t = ctx.locale.bind(NS)
+        // One feedback layer (toasts + confirm / prompt dialogs) for the page and every
+        // tool view or reply action in conversations, mounted once outside the page.
+        ctx.effect(() => mountFeedbackLayer(ctx), 'nl2sql: feedback layer')
         const Page = makePage(ctx)
         const PanelIcon = ({ size }) => Icon.db(size ?? 16)
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Page))

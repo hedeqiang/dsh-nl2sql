@@ -18,7 +18,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import { ChannelError, request } from './http.js'
-import { renderChartPng as defaultRenderChartPng, chartable, resultMeta, isKpi, kpiText, resultAsMarkdownTable, toPlainMarkdown } from './message.js'
+import { renderChartPng as defaultRenderChartPng, chartable, oneLine, resultMeta, isKpi, kpiText, resultAsMarkdownTable, toPlainMarkdown } from './message.js'
 
 export const DEFAULT_API_BASE = 'https://api.telegram.org'
 export const TEXT_LIMIT = 4096
@@ -280,12 +280,19 @@ export function inlineKeyboard(spec) {
 
 // ------------------------------------------------------------ rendering
 
+/**
+ * Data-derived text in Telegram Markdown: HTML is escaped by the converter anyway, so only
+ * link syntax and line breaks are neutralized (`[x](url)` must not become a link).
+ */
+const defangMd = (s) => oneLine(s).replace(/[[\]]/g, ch => (ch === '[' ? '［' : '］'))
+
 function resultMarkdown(r, { includeSql, maxRows = 20 } = {}) {
-  const head = `**${r.title || '查询结果'}**  ${resultMeta(r)}`
-  if (r.error) return `${head}\n${r.error}`
+  // Data-derived text (title, error, values) is defanged: no links / tags / mentions from data.
+  const head = `**${defangMd(r.title || '查询结果')}**  ${resultMeta(r)}`
+  if (r.error) return `${head}\n${defangMd(r.error)}`
   const lines = [head]
   if (!r.rows?.length) lines.push('无数据')
-  else if (isKpi(r)) lines.push(kpiText(r, { separator: '\n' }))
+  else if (isKpi(r)) lines.push(kpiText(r, { separator: '\n', escape: defangMd }))
   else lines.push(resultAsMarkdownTable(r, maxRows, { maxCols: 6 }))
   if (r.sql && includeSql) lines.push('```sql\n' + r.sql.slice(0, 1500) + '\n```')
   return lines.join('\n')
@@ -297,7 +304,7 @@ function resultMarkdown(r, { includeSql, maxRows = 20 } = {}) {
  */
 export function planMessage(message, { buttons = true } = {}) {
   const segs = []
-  const head = [message.title ? `**${message.title}**` : '', message.text ?? ''].filter(Boolean).join('\n\n')
+  const head = [message.title ? `**${defangMd(message.title)}**` : '', message.text ?? ''].filter(Boolean).join('\n\n')
   let text = head
   const flush = (keyboard) => { if (text.trim() || keyboard) segs.push({ kind: 'text', md: text, ...(keyboard ? { keyboard } : {}) }); text = '' }
   for (const r of (message.results ?? []).slice(0, 10)) {
@@ -310,7 +317,7 @@ export function planMessage(message, { buttons = true } = {}) {
     text = [text, resultMarkdown(r, { includeSql: message.includeSql })].filter(s => s.trim()).join('\n\n')
     if (keyboard) flush(keyboard)
   }
-  if (message.footer) text = [text, message.footer].filter(s => s.trim()).join('\n\n')
+  if (message.footer) text = [text, defangMd(toPlainMarkdown(message.footer, { mentionAll: '' }))].filter(s => s.trim()).join('\n\n')
   flush()
   return segs
 }

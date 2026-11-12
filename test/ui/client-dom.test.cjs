@@ -39,7 +39,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     listHistory: [{ id: 'h1', at: Date.now(), datasourceId: 'd1', datasourceName: '本地', source: 'agent', sql: 'select 1', status: 'ok', rows: 1, elapsedMs: 2 }, { id: 'h2', at: Date.now(), datasourceId: 'd1', source: 'ui', sql: 'select x', status: 'error', error: 'bad' }],
     getSettings: { maxRows: 500, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300, retention: { history: 20000 }, defaults: { maxRows: 500, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300 } },
     saveSettings: { maxRows: 900, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300, retention: { history: 20000 } },
-    resetSettings: { maxRows: 500, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300 },
+    resetSettings: { maxRows: 500, timeoutMs: 15000, sampleMode: 'enum', resultToModel: 'summary', modelRows: 20, maskSensitive: true, scanGuardRows: 1000000, cacheTtlSec: 300, retention: { history: 20000 } },
     onboardingStatus: { hasDatasource: true, analyzed: true, hasKnowledge: false, askedQuestion: false, hasChannel: false, dismissed: false }, dismissOnboarding: {},
     askSuggestions: (p) => ({ examples: (p?.offset ?? 0) === 0 ? ['最近 30 天每天的日订单', '订单按状态的分布'] : ['第二批问题一', '第二批问题二'], total: 10, pageSize: 2, offset: p?.offset ?? 0, nextOffset: ((p?.offset ?? 0) + 2) % 10, recent: [{ id: 'h9', at: Date.now() - 120000, question: '昨天的订单量', sessionId: 's9', status: 'ok' }, { id: 'h8', at: Date.now() - 300000, question: '各状态订单', sessionId: 's8', status: 'ok' }], hasMoreRecent: (p?.recentLimit ?? 8) < 18, tableCount: 2 }),
     deleteHistory: { deleted: 1 },
@@ -68,15 +68,19 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
   // 'legacy' simulates a host without the multi-platform channel RPCs (docs/channels.md).
   let hostMode = 'legacy'
   const NEW_ONLY = ['channelCatalog', 'botStatus', 'saveBot', 'restartBot', 'listChannelTargets']
+  // Per-method artificial latency (ms, or a function of the payload) for race tests.
+  const delays = {}
   global.fetch = async (url, init) => {
     const { method, payload } = JSON.parse(init.body); rpcCalls.push({ method, payload })
+    const d = typeof delays[method] === 'function' ? delays[method](payload) : delays[method]
+    if (d) await new Promise((r) => setTimeout(r, d))
     if (hostMode === 'legacy' && NEW_ONLY.includes(method)) return { status: 404, json: async () => ({ ok: false, error: { code: 'nl2sql/unknown-method', message: `unknown method ${method}` } }) }
     const r = responses[method]; return { status: 200, json: async () => ({ ok: true, value: typeof r === 'function' ? r(payload) : (r ?? null) }) }
   }
 
   // ------------------------------------------------------------ load the client plugin
   let plugin
-  window.__ModuleLoader__ = { load(r) { plugin = r.factory(Object.assign((n) => ({ react: React, 'react-dom': ReactDOM })[n], { async: () => new Promise(() => {}) })) } }
+  window.__ModuleLoader__ = { load(r) { plugin = r.factory(Object.assign((n) => ({ react: React, 'react-dom': ReactDOM, 'react-dom/client': req('react-dom/client') })[n], { async: () => new Promise(() => {}) })) } }
   require(path.join(PLUGIN_DIR, 'lib', 'client.js'))
   // Same shape as dsh-client-locale's LocaleSnapshot ({ active, locales, revision }).
   const LOCALE_SNAPSHOT = Object.freeze({ active: 'zh', locales: [], revision: 1 })
@@ -619,6 +623,192 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     const save = rpcCalls.filter((c) => c.method === 'saveChannel').pop().payload
     assert.equal(save.id, 'ch5'); assert.equal(save.isDefault, true); assert.deepEqual(save.secrets, {}); assert.deepEqual(save.config, { chatId: '-1001' })
   })
+
+  // ------------------------------------------------ regressions (two data sources, races, a11y)
+  // Fresh page with two data sources: d1 (current) and d2.
+  const ds2 = { id: 'd2', name: '第二库', database: 'db2', host: 'h', port: 3306, user: 'u', current: false, schemaAnalyzedAt: 1, policy: { mode: 'all', tables: [], hiddenColumns: [], maskedColumns: [] } }
+  const baseResponses = { listDatasources: responses.listDatasources, getKnowledge: responses.getKnowledge, askSuggestions: responses.askSuggestions, listHistory: responses.listHistory, filterCandidates: responses.filterCandidates, getDashboardFilters: responses.getDashboardFilters }
+  responses.listDatasources = [ds, ds2]
+  responses.getKnowledge = (p) => (p.datasourceId === 'd2' ? { glossary: [{ id: 'g2', term: 'UV', synonyms: [], definition: '访客' }], metrics: [], notes: {}, examples: [] } : baseResponses.getKnowledge)
+  responses.askSuggestions = (p) => ({ ...baseResponses.askSuggestions(p), examples: [`${p.datasourceId}-问题@${p.offset}`], recent: [{ id: 'r', at: Date.now(), question: `${p.datasourceId}-最近`, sessionId: 's' }] })
+  await act(async () => { root.unmount() })
+  const root2 = createRoot(rootEl)
+  await act(async () => { root2.render(React.createElement(regs['main:nl2sql'])) }); await settle(60)
+  const selectDs = async (id) => { if (!document.querySelector('.n2s-dspill select')) await clickEl(document.getElementById('n2s-tab-ask'), 40); const sel = document.querySelector('.n2s-dspill select'); await act(async () => { sel.value = id; sel.dispatchEvent(new window.Event('change', { bubbles: true })) }); await settle(60) }
+  const tabEl = (k) => clickEl(document.getElementById(`n2s-tab-${k}`), 50)
+
+  await test('regression: knowledge editor closes on data source switch (never saves into the other source)', async () => {
+    await selectDs('d1'); await tabEl('knowledge')
+    await clickEl(document.querySelector('.n2s-kbactions button[aria-label="编辑"]'))
+    assert.equal(document.querySelector('.n2s-card input')?.value, 'GMV', 'editor open on d1 item')
+    const before = rpcCalls.filter((c) => c.method === 'saveKnowledgeItem').length
+    await selectDs('d2')
+    assert.match(document.querySelector('.n2s-list2').textContent, /UV/)
+    assert.ok(![...document.querySelectorAll('.n2s-card input')].some((i) => i.value === 'GMV'), 'd1 editor gone after switching')
+    assert.equal(rpcCalls.filter((c) => c.method === 'saveKnowledgeItem').length, before)
+  })
+
+  await test('regression: Ask page never shows the previous source while the new one loads; one fetch per switch', async () => {
+    await selectDs('d1'); await tabEl('ask'); await settle(40)
+    assert.match(text(), /d1-问题@0/)
+    // move d1 to a later page so a switch must reset the offset
+    await click('换一批'); await settle(40)
+    assert.match(text(), /d1-问题@2/)
+    const from = rpcCalls.length
+    delays.askSuggestions = (p) => (p.datasourceId === 'd2' ? 300 : 0)
+    await selectDs('d2')
+    assert.doesNotMatch(text(), /d1-问题|d1-最近/, 'no stale suggestions / recent questions of d1')
+    await settle(350)
+    assert.match(text(), /d2-问题@0/)
+    const calls = rpcCalls.slice(from).filter((c) => c.method === 'askSuggestions').map((c) => `${c.payload.datasourceId}@${c.payload.offset}`)
+    assert.deepEqual(calls, ['d2@0'], 'exactly one request for the new source, at offset 0')
+    // within one source the previous page stays on screen while the next loads
+    delays.askSuggestions = 300
+    await click('换一批'); await settle(40)
+    assert.match(text(), /d2-问题@0/, 'previous page kept during 换一批')
+    await settle(320)
+    assert.match(text(), /d2-问题@2/)
+    delete delays.askSuggestions
+    await selectDs('d1')
+  })
+
+  await test('regression: KPI shows — for NULL; compact units chosen after rounding', async () => {
+    const saved = responses.getResult
+    responses.getResult = { ...result, columns: [{ name: 'a', kind: 'number' }, { name: 'b', kind: 'number' }, { name: 'c', kind: 'number' }], rows: [[null, 99995000, 99999]], chart: { type: 'kpi', y: ['a', 'b', 'c'] } }
+    const el = document.body.appendChild(document.createElement('div'))
+    const r = createRoot(el)
+    await act(async () => { r.render(React.createElement(regs['tool.call.toolview:nl2sql_query'], { phase: 'result', block: { isError: false, meta: { resultId: 'r1' }, call: { argsRaw: '{}' } } })) }); await settle(40)
+    assert.deepEqual([...el.querySelectorAll('.n2s-kpi .v')].map((x) => x.textContent), ['—', '1.00亿', '99,999'])
+    await act(async () => { r.unmount() }); el.remove()
+    responses.getResult = saved
+  })
+
+  await test('regression: pin is single-flight; dialogs from a tool view show without the page (global FeedbackLayer)', async () => {
+    await act(async () => { root2.unmount() })
+    const el = document.body.appendChild(document.createElement('div'))
+    const r = createRoot(el)
+    delays.pinWidget = 150
+    await act(async () => { r.render(React.createElement(regs['tool.call.toolview:nl2sql_query'], { phase: 'result', block: { isError: false, meta: { resultId: 'r1' }, call: { argsRaw: '{}' } } })) }); await settle(40)
+    const before = rpcCalls.filter((c) => c.method === 'pinWidget').length
+    const pinB = el.querySelector('button[aria-label="固定到看板"]')
+    await act(async () => { pinB.click(); pinB.click() }); await settle(200)
+    assert.equal(rpcCalls.filter((c) => c.method === 'pinWidget').length - before, 1)
+    delete delays.pinWidget
+    const more = [...el.querySelectorAll('button[aria-haspopup=menu]')].pop()
+    await clickEl(more, 20)
+    await clickEl([...document.querySelectorAll('.n2s-menu button')].find((b) => b.textContent.includes('样例')), 40)
+    assert.ok(document.querySelector('.n2s-modal input'), 'prompt dialog rendered')
+    assert.equal(document.querySelectorAll('.n2s-feedback-root').length, 1, 'one global feedback root')
+    // Escape closes the prompt
+    await act(async () => { document.querySelector('.n2s-modal input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) }); await settle()
+    assert.ok(!document.querySelector('.n2s-modal'))
+    await act(async () => { r.unmount() }); el.remove()
+  })
+
+  const root3 = createRoot(rootEl)
+  await act(async () => { root3.render(React.createElement(regs['main:nl2sql'])) }); await settle(60)
+
+  await test('regression: page asks bind only the session startSession created', async () => {
+    const origStart = ctx.uiWorkspace.startSession
+    const composer = regs['conversation.input.left:nl2sql-datasource']
+    const mount = async (sessionId) => { const el = document.body.appendChild(document.createElement('div')); const r = createRoot(el); await act(async () => { r.render(React.createElement(composer, { sessionId })) }); await settle(40); return () => act(async () => { r.unmount(); el.remove() }) }
+    const binds = () => rpcCalls.filter((c) => c.method === 'bindSession').map((c) => `${c.payload.sessionId}=${c.payload.datasourceId}`)
+    // a conversation the composer already showed before the ask is never claimed
+    const u0 = await mount('seen-before')
+    await selectDs('d2'); await tabEl('ask'); await settle(40)
+    ctx.uiWorkspace.startSession = () => 'new-1'
+    const b0 = binds().length
+    await clickEl(document.querySelector('.n2s-example'), 20)
+    await u0(); const u1 = await mount('seen-before')
+    // an unrelated, never-seen session that opens first is not the new one either
+    const u2 = await mount('other-session')
+    assert.deepEqual(binds().slice(b0), [], 'no session bound before ours appears')
+    const u3 = await mount('new-1')
+    assert.deepEqual(binds().slice(b0), ['new-1=d2'])
+    await u1(); await u2(); await u3()
+    ctx.uiWorkspace.startSession = origStart
+    await selectDs('d1')
+  })
+
+  await test('regression: dashboard free-text filter keeps a draft, commits on blur, no tag deletion while typing', async () => {
+    responses.filterCandidates = { time: [], dims: [{ column: 'city', label: '城市', tables: ['orders'], values: [] }] }
+    responses.getDashboardFilters = [{ kind: 'in', column: 'city', values: ['x'] }]
+    await tabEl('history'); await tabEl('dashboard'); await settle(60)
+    const input = () => document.querySelector('.n2s-ftag input')
+    assert.equal(input().value, 'x')
+    const saves = () => rpcCalls.filter((c) => c.method === 'saveDashboardFilters')
+    const s0 = saves().length; const w0 = rpcCalls.filter((c) => c.method === 'runWidget').length
+    await setValue(input(), 'x,'); await settle(20)
+    assert.equal(input().value, 'x,', 'comma can be typed')
+    await setValue(input(), ''); await settle(20)
+    assert.ok(input(), 'clearing keeps the field')
+    await setValue(input(), 'x, y'); await settle(20)
+    assert.equal(saves().length, s0, 'nothing saved per keystroke')
+    assert.equal(rpcCalls.filter((c) => c.method === 'runWidget').length, w0, 'widgets not refetched per keystroke')
+    await act(async () => { input().dispatchEvent(new window.FocusEvent('focusout', { bubbles: true })) }); await settle(40)
+    assert.deepEqual(saves().slice(s0).map((c) => c.payload.filters), [[{ kind: 'in', column: 'city', values: ['x', 'y'] }]])
+    responses.filterCandidates = baseResponses.filterCandidates; responses.getDashboardFilters = baseResponses.getDashboardFilters
+  })
+
+  await test('regression: leaving settings with unsaved changes asks first', async () => {
+    await openAdmin('设置'); await click('查询')
+    await setValue(document.getElementById('set-maxRows'), '901'); await settle()
+    await tabEl('ask')
+    assert.match(modal()?.textContent ?? '', /放弃未保存的设置/)
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '取消'), 30)
+    assert.equal(document.getElementById('set-maxRows')?.value, '901', 'draft kept when cancelled')
+    await tabEl('ask')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '放弃并离开'), 40)
+    assert.equal(document.querySelector('.n2s-tabs [aria-selected=true]').textContent.trim(), '问答')
+  })
+
+  await test('regression: history labels bot and unknown sources; feedback delete asks first', async () => {
+    responses.listHistory = [{ id: 'h7', at: Date.now() - 3 * 86400000, datasourceId: 'd1', datasourceName: '本地', source: 'telegrambot', sql: 'select 1', status: 'ok' }, { id: 'h6', at: Date.now(), datasourceId: 'd1', source: 'slackbot', sql: 'select 2', status: 'ok' }]
+    await tabEl('history'); await settle(40)
+    const srcs = [...document.querySelectorAll('.n2s-hist-when .src')].map((x) => x.textContent)
+    assert.match(srcs[0], /^Telegram 机器人/); assert.match(srcs[1], /^slack 机器人/)
+    assert.match(document.querySelector('.n2s-hist-when').textContent, /3 天前/)
+    responses.listHistory = baseResponses.listHistory
+    await tabEl('knowledge'); await click('反馈')
+    const del0 = rpcCalls.filter((c) => c.method === 'deleteFeedback').length
+    await clickEl([...document.querySelectorAll('.n2s-cards button')].find((b) => b.textContent === '删除'), 20)
+    assert.match(modal()?.textContent ?? '', /删除这条反馈/)
+    assert.equal(rpcCalls.filter((c) => c.method === 'deleteFeedback').length, del0, 'not deleted before confirming')
+    await clickEl([...modal().querySelectorAll('button')].find((b) => b.textContent === '取消'), 20)
+  })
+
+  await test('regression: a11y — policy rows are keyboard checkboxes; kind cards are list items; focus trapped in dialogs', async () => {
+    await openAdmin('数据源')
+    await menu('更多操作', '访问控制')
+    const row = [...document.querySelectorAll('[role=checkbox]')].find((r) => r.textContent.includes('orders'))
+    assert.ok(row, 'policy row is role=checkbox'); assert.equal(row.tabIndex, 0)
+    const was = row.getAttribute('aria-checked')
+    await act(async () => { row.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true })) }); await settle()
+    assert.notEqual([...document.querySelectorAll('[role=checkbox]')].find((r) => r.textContent.includes('orders')).getAttribute('aria-checked'), was, 'Space toggles')
+    await click('取消')
+    await openAdmin('渠道'); await click('+ 添加渠道')
+    assert.ok(!modal().querySelector('button[role=listitem]'), 'no role=listitem on buttons')
+    assert.ok(modal().querySelector('ul.n2s-kindcards > li > button.n2s-kindcard'))
+    // Tab from the last focusable element wraps to the first
+    const focusables = [...modal().querySelectorAll('button:not([disabled]), input:not([disabled]), select, textarea')]
+    focusables[focusables.length - 1].focus()
+    await act(async () => { document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true })) })
+    assert.equal(document.activeElement, focusables[0], 'focus wraps inside the dialog')
+    await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) }); await settle()
+    assert.ok(!modal(), 'Escape closes the picker')
+  })
+
+  await test('regression: Ask SQL result is cleared when the data source changes', async () => {
+    await selectDs('d1'); await tabEl('ask')
+    await click('直接写 SQL')
+    await setValue(document.querySelector('.n2s-sqlbox textarea'), 'select 1')
+    await click('执行'); assert.ok(document.querySelector('.n2s-collapse .n2s-result'), 'result shown')
+    await selectDs('d2')
+    assert.ok(!document.querySelector('.n2s-collapse .n2s-result'), 'result of d1 gone after switching')
+    await selectDs('d1')
+  })
+
+  for (const [k, v] of Object.entries(baseResponses)) responses[k] = v
 
   await test('no React / window errors', () => {
     assert.deepEqual(errors.filter((e) => !/act\(|not wrapped/.test(e)), [])

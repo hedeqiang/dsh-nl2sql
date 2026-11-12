@@ -31,10 +31,16 @@
             area('maskedColumns', 'policy.maskedColumns', 'users.phone\\n*.email')),
           h('div', null,
             h('div', { className: 'n2s-muted n2s-small', style: { marginBottom: 6 } }, tables.length ? fmt(t, 'policy.preview', { allowed: allowed.length, total: tables.length }) : t('schema.notAnalyzed')),
-            h('div', { className: 'n2s-list', style: { maxHeight: 320 } }, tables.map(tb => {
+            h('div', { className: 'n2s-list', role: 'group', 'aria-label': t('policy.tablesLabel'), style: { maxHeight: 320 } }, tables.map(tb => {
               const ok = allowed.includes(tb)
-              return h('div', { key: tb.name, className: 'n2s-item', style: { cursor: form.mode === 'all' ? 'default' : 'pointer', opacity: ok ? 1 : 0.5 }, onClick: () => form.mode !== 'all' && toggleTable(tb.name) },
-                h('span', null, ok ? '✓' : '✕'), h('span', { className: 'name n2s-mono' }, tb.name), roleBadge(t, tb.role))
+              const editable = form.mode !== 'all'
+              return h('div', {
+                key: tb.name, className: 'n2s-item', style: { cursor: editable ? 'pointer' : 'default', opacity: ok ? 1 : 0.5 },
+                role: 'checkbox', 'aria-checked': ok, 'aria-disabled': editable ? undefined : true, tabIndex: editable ? 0 : -1, 'aria-label': tb.name,
+                onClick: () => editable && toggleTable(tb.name),
+                onKeyDown: (e) => { if (editable && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); toggleTable(tb.name) } },
+              },
+                h('span', { 'aria-hidden': true }, ok ? '✓' : '✕'), h('span', { className: 'name n2s-mono' }, tb.name), roleBadge(t, tb.role))
             })),
             form.mode !== 'all' && tables.length > 0 && h('div', { className: 'n2s-muted n2s-small', style: { marginTop: 6 } }, t('policy.clickHint')))),
         error && h('div', { className: 'n2s-notice err', style: { marginTop: 10 } }, error),

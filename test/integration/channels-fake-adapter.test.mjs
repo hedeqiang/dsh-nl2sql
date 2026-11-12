@@ -3,7 +3,7 @@
 // bot pipeline (actor resolution, conversation, agent turn on MySQL, actions + re-authorization).
 import { test, skipFile, summary, assert } from '../lib/assert.mjs'
 import { MYSQL, mysqlUnavailable, plugin, sleep } from '../lib/env.mjs'
-import { boot } from '../lib/harness.mjs'
+import { boot, fakeSchedule } from '../lib/harness.mjs'
 
 const down = await mysqlUnavailable()
 if (down) skipFile(down)
@@ -109,7 +109,8 @@ const sessions = fakeSessions(async (text, sid) => {
   return { text: `共 ${out.display.rowCount} 天 <font color='green'>↑</font>`, metas: [out.display] }
 })
 
-const app = await boot({ label: 'ch-fake', services: { agents: sessions.agents, sessionController: sessions.controller } })
+const schedule = fakeSchedule()
+const app = await boot({ label: 'ch-fake', services: { agents: sessions.agents, sessionController: sessions.controller, schedule } })
 toolsRef = app.tools
 const { call, service } = app
 const SQL = 'select date(created_at) d, count(*) n from blockchain_transactions group by d order by d'
@@ -271,6 +272,25 @@ try {
     assert.match(prompts.at(-1), new RegExp(`当前数据源：${dsName}（按问题自动选择）`))
   })
 
+  await test('bot commands: only whole-message commands; questions starting with a command word reach the agent', async () => {
+    for (const q of ['自动续费用户有多少', '数据源表里有几行', '切换率是多少', 'help me count orders', '帮助中心的访问量', 'new users last week']) {
+      const before = prompts.length
+      await bot.receive({ id: `cq-${q}`, text: q, userId: 'u1' })
+      assert.equal(prompts.length, before + 1, `question reached the agent: ${q}`)
+    }
+    const commands = [['帮助', /数据源 \/ sources[\s\S]*switch <name>[\s\S]*新对话 \/ new/], ['/help', /直接 @我 提问/], ['help?', /直接 @我 提问/], ['帮助？', /直接 @我 提问/],
+      ['数据源', /可用数据源：/], ['sources', /可用数据源：/], ['datasources', /可用数据源：/], ['自动', /按问题自动选择数据源/], ['auto!', /按问题自动选择数据源/],
+      ['新对话', /已开始新对话/], ['new', /已开始新对话/], ['reset', /已开始新对话/],
+      ['切换', /用法：切换 <数据源名称>[\s\S]*可用：A/], ['switch', /用法/], ['切换 A', /已切换到数据源「A」/], ['switch a', /已切换到数据源「A」/], ['use A', /已切换到数据源「A」/]]
+    for (const [cmd, re] of commands) {
+      const before = prompts.length
+      await bot.receive({ id: `cmd-${cmd}`, text: cmd, userId: 'u1' })
+      assert.equal(prompts.length, before, `command not sent to the agent: ${cmd}`)
+      assert.match(bot.replies.at(-1).text ?? '', re, `${cmd} → ${bot.replies.at(-1).text}`)
+    }
+    await bot.receive({ id: 'cmd-auto2', text: '自动', userId: 'u1' })
+  })
+
   await test('actions: re-authorized per click (rate limit, viewer, wrong chat, wrong channel); breakdown replies', async () => {
     const card = bot.replies.find(r => r.kind === 'card' && r.to === 'q1')
     const { select, buttons } = card.message.results[0].actions
@@ -332,6 +352,53 @@ try {
     const small = await call('runQuery', { datasourceId: ds.id, sql: 'select chain_type, count(*) n from blockchain_transactions group by chain_type' })
     await call('sendToChannel', { channelId: filesCh.id, title: 'small', resultIds: [small.resultId] })
     assert.equal(fake.sent.at(-1).message.attachment, undefined)
+  })
+
+  await test('send: titles over 100 characters are truncated, not rejected', async () => {
+    const r = await call('runQuery', { datasourceId: ds.id, sql: 'select 1 as x', title: 'R'.repeat(110) })
+    const out = await call('sendToChannel', { channelId: ch.id, resultIds: [r.resultId] })
+    assert.equal(out.ok, true)
+    let msg = fake.sent.at(-1).message
+    assert.equal(msg.title.length, 100)
+    assert.ok(msg.title.endsWith('…'))
+    assert.ok(msg.results[0].title.length <= 100)
+    await app.tool('nl2sql_send', { channel: 'F', title: 'T'.repeat(101), text: 'hi' })
+    msg = fake.sent.at(-1).message
+    assert.equal(msg.title.length, 100)
+    await call('sendToChannel', { channelId: ch.id, title: '😀'.repeat(60), text: 'x' })
+    assert.ok(!/[\uD800-\uDBFF]…$/.test(fake.sent.at(-1).message.title), 'no split surrogate pair')
+  })
+
+  await test('type change keeps stored secrets whose key the new kind also has', async () => {
+    const c = await call('saveChannel', { name: 'TC', type: 'fakeim_bot', config: { chatId: 'g3' }, secrets: { token: 'keep' } })
+    const changed = await call('saveChannel', { id: c.id, type: 'fakeim_plain', config: { chatId: 'g3' } })
+    assert.equal(changed.type, 'fakeim_plain')
+    assert.deepEqual(changed.secretsSet, { token: true })
+    assert.equal(app.creds.get(`nl2sql/${c.id}`).payload.token, 'keep')
+    await call('deleteChannel', { id: c.id })
+  })
+
+  await test('delete channel: alerts, schema notifications, report prompts and bot conversations drop the reference', async () => {
+    const c = await call('saveChannel', { name: 'Gone', type: 'fakeim_bot', config: { chatId: 'g7' }, secrets: { token: 'g' }, bot: { enabled: true } })
+    const gbot = fake.bots.at(-1)
+    await gbot.receive({ id: 'gq1', text: 'Q:select 1 as x', userId: 'u1', chatId: 'g1' })
+    assert.ok(Object.values(service.state.botConversations).some(v => v.channelId === c.id))
+    const al = await call('saveAlert', { name: 'al', datasourceId: ds.id, source: 'sql', sql: 'select 1 as v', condition: { type: 'threshold', op: '>', value: 0 }, channelId: c.id })
+    await call('saveSettings', { schemaNotifyChannel: c.id })
+    const rp = await call('saveReport', { title: 'R', datasourceId: ds.id, question: 'q', channelId: c.id, time: '09:00' })
+    assert.ok(schedule.sched.get(rp.scheduleId).prompt.includes(c.id))
+    await call('deleteChannel', { id: c.id })
+    assert.equal((await call('listAlerts')).find(a => a.id === al.id).channelId, null)
+    assert.ok(!(await call('getSettings')).schemaNotifyChannel)
+    assert.ok(!schedule.sched.get(rp.scheduleId).prompt.includes(c.id), 'report prompt rewritten')
+    assert.equal(service.state.reports.find(r => r.id === rp.id).channelId, undefined)
+    assert.equal(Object.values(service.state.botConversations).some(v => v.channelId === c.id), false)
+    const res = await call('checkAlert', { id: al.id })
+    assert.equal(res.triggered, true)
+    const ev = service.records.list('alertEvent', { ref: al.id, limit: 5 })[0]
+    assert.equal(ev.pushError, undefined, 'no push to a deleted channel')
+    await call('deleteAlert', { id: al.id })
+    await call('deleteReport', { id: rp.id }).catch(() => {})
   })
 } finally {
   await app.close()

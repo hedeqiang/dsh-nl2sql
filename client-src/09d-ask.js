@@ -3,7 +3,7 @@
      * Hidden once every required step is done or the user dismisses it.
      */
     function Onboarding({ t, ds, onNavigate, onAsk, examples }) {
-      const st = useAsync(() => call('onboardingStatus').catch(() => null), [ds?.id, ds?.schemaAnalyzedAt])
+      const st = useAsync(() => call('onboardingStatus').catch(() => null), [ds?.id, ds?.schemaAnalyzedAt], [])
       const [busy, setBusy] = useState(false)
       const v = st.value
       if (!v || v.dismissed) return null
@@ -42,12 +42,21 @@
       const [exOffset, setExOffset] = useState(0)
       const [recentLimit, setRecentLimit] = useState(8)
       const [hiddenRecent, setHiddenRecent] = useState(() => new Set())
-      useEffect(() => { setExOffset(0); setRecentLimit(8) }, [ds?.id])
-      const sugg = useAsync(() => (ds ? call('askSuggestions', { datasourceId: ds.id, locale: uiLang, offset: exOffset, pageSize: 6, recentLimit }).catch(() => null) : null), [ds?.id, ds?.schemaAnalyzedAt, uiLang, exOffset, recentLimit])
-      // Keep the previous page on screen while the next one loads (no flicker on 换一批).
-      const [shown, setShown] = useState(null)
-      useEffect(() => { if (sugg.value) { setShown(sugg.value); setHiddenRecent(new Set()) } }, [sugg.value])
-      const data = sugg.value ?? shown
+      // Data source switched: reset paging and per-source results during render, so the
+      // first request for the new source already uses offset 0 (no extra fetch).
+      const [stateFor, setStateFor] = useState(ds?.id)
+      if (stateFor !== ds?.id) {
+        setStateFor(ds?.id)
+        setExOffset(0); setRecentLimit(8); setHiddenRecent(new Set())
+        setResult(null); setPlan(null); setError(null)
+      }
+      const pageOffset = stateFor === ds?.id ? exOffset : 0
+      const pageRecent = stateFor === ds?.id ? recentLimit : 8
+      // Scoped by data source + language: within one source the previous page stays on
+      // screen while the next loads (no flicker on 换一批); another source's never does.
+      const sugg = useAsync(() => (ds ? call('askSuggestions', { datasourceId: ds.id, locale: uiLang, offset: pageOffset, pageSize: 6, recentLimit: pageRecent }).catch(() => null) : null), [ds?.id, ds?.schemaAnalyzedAt, uiLang, pageOffset, pageRecent], [ds?.id, uiLang])
+      useEffect(() => { if (sugg.value && !sugg.stale) setHiddenRecent(new Set()) }, [sugg.value])
+      const data = sugg.value
       const examples = data?.examples?.length ? data.examples : [t('ask.ex.tables'), t('ask.ex.biggest')]
       const canShuffle = (data?.total ?? 0) > (data?.pageSize ?? 6)
       const recent = (data?.recent ?? []).filter(r => !hiddenRecent.has(r.question))
@@ -56,25 +65,30 @@
         setHiddenRecent(x => new Set(x).add(r.question))
         try { const res = await call('deleteHistory', { title: r.question, datasourceId: ds.id }); notify(fmt(t, 'ask.deletedN', { n: res.deleted }), 'ok') } catch (e) { notifyError(e); setHiddenRecent(x => { const n = new Set(x); n.delete(r.question); return n }) }
       }
+      const currentDs = useRef(ds?.id)
+      currentDs.current = ds?.id
       const run = async (confirmScan = false) => {
+        const forId = ds.id
         setRunning(true); setError(null)
         try {
-          setResult(await call('runQuery', { sql, datasourceId: ds.id, title: '', confirmScan }))
+          const r = await call('runQuery', { sql, datasourceId: forId, title: '', confirmScan })
+          if (currentDs.current === forId) setResult(r)
         } catch (e) {
-          if (e.code === 'nl2sql/scan-guard' && await confirmDialog({ title: t('sql.confirmScan'), message: e.message })) { setRunning(false); return run(true) }
-          setError(e.message)
+          if (e.code === 'nl2sql/scan-guard' && currentDs.current === forId && await confirmDialog({ title: t('sql.confirmScan'), message: e.message })) { setRunning(false); return run(true) }
+          if (currentDs.current === forId) setError(e.message)
         }
         setRunning(false)
       }
       const explain = async () => {
+        const forId = ds.id
         setRunning(true); setError(null)
-        try { setPlan(await call('explain', { sql, datasourceId: ds.id })) } catch (e) { setError(e.message) }
+        try { const p = await call('explain', { sql, datasourceId: forId }); if (currentDs.current === forId) setPlan(p) } catch (e) { if (currentDs.current === forId) setError(e.message) }
         setRunning(false)
       }
       const submit = () => { if (question.trim()) { onAsk(question.trim()); setQuestion('') } }
       const [uploading, setUploading] = useState(false)
       const [sqlOpen, setSqlOpen] = useState(false)
-      const tableCount = ds?.tableCount ?? sugg.value?.tableCount
+      const tableCount = ds?.tableCount ?? data?.tableCount
       return h('div', null,
         h(Onboarding, { t, ds, onNavigate, onAsk, examples }),
         h('div', { className: 'n2s-hero' },
@@ -123,15 +137,16 @@
             result && h('div', { className: 'n2s-card', style: { marginTop: 12 } }, h(ResultView, { result, t, hideSql: true })))))
     }
 
-    /** "3 分钟前" style relative time. */
+    /** "3 分钟前" style relative time in the UI language; future or older than a week → the date. */
     function relTime(t, at) {
       if (!at) return ''
       const d = (Date.now() - at) / 1000
+      if (d < -60) return new Date(at).toLocaleDateString(uiLocale())
       if (d < 60) return t('time.justNow')
       if (d < 3600) return fmt(t, 'time.minAgo', { n: Math.floor(d / 60) })
       if (d < 86400) return fmt(t, 'time.hourAgo', { n: Math.floor(d / 3600) })
       if (d < 86400 * 7) return fmt(t, 'time.dayAgo', { n: Math.floor(d / 86400) })
-      return new Date(at).toLocaleDateString()
+      return new Date(at).toLocaleDateString(uiLocale())
     }
 
     function PlanTable({ plan }) {

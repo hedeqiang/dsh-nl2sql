@@ -3,10 +3,11 @@
  * Mixed into the service prototype by index.js; `this` is the service.
  */
 import { aliasExpr, buildAttributionSql, buildBreakdownSql, buildDetailSql, buildMetricSql, computeAttribution, isAdditive, parseSelect, quoteName, rankDimensions } from '../analysis.js'
-import { applyFilters, normalizeFilters } from '../filters.js'
+import { FilterInjectionError, applyFilters, normalizeFilters } from '../filters.js'
 import { checkAccess, filterSchema, policyActive, referencedTables, resultColumnPolicy } from '../policy.js'
 import { admitSql, prepareSql, stripSql } from '../sql-guard.js'
 import { cacheKey } from '../store.js'
+import { createHash } from 'node:crypto'
 import { writeXlsx } from '../xlsx.js'
 import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, UserError, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
 
@@ -36,12 +37,19 @@ export const methods = {
     }
     let appliedFilters = []
     if (filters?.length) {
-      const f = applyFilters(admitted.sql, normalizeFilters(filters), { dialect, schema: filterSchema(fullSchema, policy) })
+      let f
+      try { f = applyFilters(admitted.sql, normalizeFilters(filters), { dialect, schema: filterSchema(fullSchema, policy) }) } catch (error) {
+        if (!(error instanceof FilterInjectionError)) throw error
+        this.audit({ ds, sessionId, source, sql: admitted.sql, title, status: 'blocked', error: 'filter injection refused', actor })
+        await this.save()
+        throw new UserError('nl2sql/invalid', '无法安全地为这条查询加上筛选条件，已拒绝。请改写查询（检查括号与注释）。')
+      }
       appliedFilters = f.applied
       if (f.applied.length) admitted = admitSql(f.sql, { dialect })
     }
     // Row-level security: every rule must be injected into the outer query; otherwise refuse.
     const rowRules = this.rowRulesFor(actor, ds)
+    const rowRulesSig = rowRules.length ? rowRulesSignature(rowRules) : undefined
     if (rowRules.length) {
       const schemaForRules = fullSchema ?? await this.analyzeSchema(ds.id)
       const refs = referencedTables(admitted.sql, schemaForRules.tables, { dialect })
@@ -55,7 +63,13 @@ export const methods = {
           await this.save()
           throw new UserError('nl2sql/row-policy', `当前成员受行级权限限制（${needed.map(r => `${r.column} ∈ {${r.values.join(', ')}}`).join('；')}），查询不能包含子查询、CTE 或 UNION，请改写为单层查询。`)
         }
-        const f = applyFilters(admitted.sql, needed.map(r => ({ kind: 'in', column: r.column, values: r.values })), { dialect, schema: schemaForRules })
+        let f
+        try { f = applyFilters(admitted.sql, needed.map(r => ({ kind: 'in', column: r.column, values: r.values })), { dialect, schema: schemaForRules }) } catch (error) {
+          if (!(error instanceof FilterInjectionError)) throw error
+          this.audit({ ds, sessionId, source, sql: admitted.sql, title, status: 'blocked', error: 'row-level policy: injection refused', actor })
+          await this.save()
+          throw new UserError('nl2sql/row-policy', `当前成员受行级权限限制（${needed.map(r => `${r.column} ∈ {${r.values.join(', ')}}`).join('；')}），这条查询无法安全地加上该过滤，已拒绝。`)
+        }
         const missing = needed.filter(r => !f.applied.some(a => a.column.toLowerCase() === r.column.toLowerCase()))
         // Every referenced table that has the column must be covered.
         const tablesWithCol = (col) => refs.filter(t => schemaForRules.tables.find(x => x.name === t)?.columns.some(c => c.name.toLowerCase() === col.toLowerCase()))
@@ -71,10 +85,10 @@ export const methods = {
     }
     // Query cache: dashboards, reruns and reports reuse a recent identical result.
     const ttlMs = (settings.cacheTtlSec ?? 0) * 1000
-    const key = ttlMs > 0 && useCache && this.store ? cacheKey([ds.id, admitted.sql, settings.maxRows, settings.maskSensitive, ds.policy ?? null, ds.updatedAt ?? 0, rowRules]) : null
+    const key = ttlMs > 0 && useCache && this.store ? cacheKey([ds.id, admitted.sql, settings.maxRows, settings.maskSensitive, ds.policy ?? null, ds.updatedAt ?? 0, rowRules, rowRulesSig ?? null]) : null
     if (key) {
       const hit = this.store.cached(key, ttlMs)
-      if (hit) {
+      if (hit && (hit.rowRulesSig ?? undefined) === rowRulesSig) {
         const result = { ...hit, resultId: newId('r'), title: title ? String(title).slice(0, 120) : hit.title, chart: normalizeChart(chart, hit.columns) ?? hit.chart, cached: true, cachedAt: hit.createdAt, createdAt: Date.now(), ...(appliedFilters.length ? { filters: appliedFilters, baseSql: sql } : {}) }
         this.remember(result)
         this.audit({ ds, sessionId, source, sql: admitted.sql, title, status: 'ok', rows: result.rowCount, elapsedMs: 0, resultId: result.resultId, cached: true, actor })
@@ -134,6 +148,7 @@ export const methods = {
       executedSql: prepared,
       ...(appliedFilters.length ? { filters: appliedFilters, baseSql: sql } : {}),
       ...(colPolicy.drop.size ? { hiddenColumns: colPolicy.drop.size } : {}),
+      ...(rowRulesSig ? { rowRulesSig } : {}),
       title: title ? String(title).slice(0, 120) : '',
       columns,
       rows: cells,
@@ -211,11 +226,17 @@ export const methods = {
     return this.lookupResult(resultId) ?? null
   },
 
-  /** A scoped actor may only use results of data sources in scope (and with its own row rules applied). */
+  /**
+   * A scoped actor may only use results of data sources in scope, and — when it
+   * has row rules — only results filtered by exactly its own rules (signature
+   * match; results without a signature, e.g. from older versions, are refused).
+   */
   assertResultAccess(r, actor) {
     if (!actor || actor.kind === 'owner') return
-    this.assertAccess(actor, this.requireDatasource(r.datasourceId))
-    if (this.rowRulesFor(actor, this.requireDatasource(r.datasourceId)).length && !r.filters?.some(f => f.rowPolicy)) throw new UserError('nl2sql/row-policy', '该结果未按你的行级权限过滤，不能使用，请重新查询')
+    const ds = this.requireDatasource(r.datasourceId)
+    this.assertAccess(actor, ds)
+    const rules = this.rowRulesFor(actor, ds)
+    if (rules.length && (!r.filters?.some(f => f.rowPolicy) || r.rowRulesSig !== rowRulesSignature(rules))) throw new UserError('nl2sql/row-policy', '该结果未按你的行级权限过滤，不能使用，请重新查询')
   },
 
   cacheStats() {
@@ -408,4 +429,11 @@ export const methods = {
     const file = `${(name || results[0].title || '数据问答').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)}-${new Date().toISOString().slice(0, 10)}.xlsx`
     return { fileName: file, mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base64: buf.toString('base64'), bytes: buf.length, sheets: sheets.length }
   },
+}
+
+/** Stable signature of a set of row rules (order of rules and of values does not matter). */
+export function rowRulesSignature(rules) {
+  const norm = rules.map(r => ({ column: String(r.column).toLowerCase(), values: [...new Set((r.values ?? []).map(String))].sort() }))
+    .sort((a, b) => (a.column + '\0' + a.values.join('\0')).localeCompare(b.column + '\0' + b.values.join('\0')))
+  return createHash('sha256').update(JSON.stringify(norm)).digest('hex').slice(0, 32)
 }

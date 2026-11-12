@@ -65,4 +65,28 @@ await test('normalizeFilters drops junk', () => {
   assert.ok(!n.some((x) => x?.kind === 'nope'))
 })
 
+await test('mysql `1--1` is code, not a comment: row predicate cannot be escaped', () => {
+  const rule = [{ kind: 'in', column: 'status', values: ['1'] }]
+  assert.throws(() => applyFilters('select status, count(*) n from orders WHERE 1--1) OR (1\ngroup by status', rule, { dialect: 'mysql', schema, now }), /top-level/)
+  // `1--1` without parenthesis tricks is still filtered correctly
+  const ok = applyFilters('select status from orders where amount > 1--1\ngroup by status', rule, { dialect: 'mysql', schema, now })
+  assert.equal(ok.sql, "select status from orders WHERE (`orders`.`status` IN ('1')) AND (amount > 1--1) group by status")
+  // PostgreSQL: `--1` really is a comment there
+  const pg = applyFilters('select status from orders where amount > 1--1) OR (1\ngroup by status', rule, { dialect: 'postgres', schema, now })
+  assert.match(pg.sql, /^select status from orders WHERE \("orders"\."status" IN \('1'\)\) AND \(amount > 1--1\) OR \(1\n\)/)
+})
+await test('trailing line comment cannot swallow the injected predicate', () => {
+  const rule = [{ kind: 'in', column: 'status', values: ['1'] }]
+  const a = applyFilters('select status from orders -- c\ngroup by status', rule, { dialect: 'mysql', schema, now })
+  assert.equal(a.sql, "select status from orders -- c\nWHERE `orders`.`status` IN ('1') group by status")
+  const b = applyFilters('select status from orders where 1 -- c\ngroup by status', rule, { dialect: 'mysql', schema, now })
+  assert.equal(b.sql, "select status from orders WHERE (`orders`.`status` IN ('1')) AND (1 -- c\n) group by status")
+})
+await test('unbalanced parentheses / top-level OR next to the predicate are refused', () => {
+  const rule = [{ kind: 'in', column: 'status', values: ['1'] }]
+  for (const sql of ['select status from orders where 1) or (1', 'select status from orders where (1 or 1']) {
+    assert.throws(() => applyFilters(sql, rule, { dialect: 'mysql', schema, now }), /top-level/, sql)
+  }
+})
+
 summary('filters')

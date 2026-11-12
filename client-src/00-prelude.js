@@ -3,6 +3,8 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     const ReactDOM = require('react-dom')
+    // createRoot for the global feedback layer; older loaders only share react-dom.
+    const ReactDOMClient = (() => { try { return require('react-dom/client') } catch { return null } })() ?? ReactDOM
     const h = React.createElement
     const { useState, useEffect, useMemo, useRef, useCallback, useSyncExternalStore } = React
 

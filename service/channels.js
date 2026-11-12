@@ -19,6 +19,15 @@ import { UserError, newId, pick, requireText, upsert } from './shared.js'
 const LARK_LEGACY = ['domain', 'appId', 'receiveIdType', 'receiveId']
 const BOT_DEFAULTS = { enabled: false, allowP2p: true, sessionScope: 'chat' }
 
+/** Truncate to `max` UTF-16 units with an ellipsis, without splitting a surrogate pair. */
+export function clip(s, max) {
+  const str = String(s ?? '')
+  if (str.length <= max) return str
+  let cut = max - 1
+  if (/[\uD800-\uDBFF]/.test(str[cut - 1] ?? '')) cut--
+  return `${str.slice(0, cut)}…`
+}
+
 /** ChannelError (or legacy ImError) → UserError with the same code and message. */
 export function channelUserError(error, code) {
   if (!(error instanceof ChannelError || (error?.code && /^(im|channel)\//.test(error.code)))) return error
@@ -172,8 +181,10 @@ export const methods = {
     c.platform = adapter.id
     c.description = String(input.description ?? c.description ?? '').slice(0, 300)
     const { config: configIn, secrets: changed } = splitPayload(input, { ...kind, platform: adapter.id })
-    const stored = existing && !typeChanged ? await this.channelSecrets(existing) : {}
     const keys = secretKeys(kind)
+    // A type change keeps stored secrets whose key the new kind also has (e.g. webhookUrl, token).
+    const stored = existing ? await this.channelSecrets(existing) : {}
+    if (typeChanged) for (const k of Object.keys(stored)) if (!keys.includes(k)) delete stored[k]
     const merged = {}
     for (const k of keys) {
       if (Object.hasOwn(changed, k)) { if (changed[k] !== null) merged[k] = changed[k] } else if (stored[k] !== undefined) merged[k] = stored[k]
@@ -224,9 +235,19 @@ export const methods = {
     await this.stopBot(id)
     this.state.channels = this.state.channels.filter(x => x.id !== id)
     if (c.isDefault && this.state.channels[0]) this.state.channels[0].isDefault = true
-    for (const r of this.state.reports) if (r.channelId === id) delete r.channelId
+    // Drop every reference to the channel: alerts, schema notifications, bot conversations, reports.
+    for (const a of this.state.alerts ?? []) if (a.channelId === id) a.channelId = null
+    if (this.state.settings?.schemaNotifyChannel === id) this.state.settings.schemaNotifyChannel = null
+    for (const [k, conv] of Object.entries(this.state.botConversations ?? {})) if (conv?.channelId === id) delete this.state.botConversations[k]
+    const reports = (this.state.reports ?? []).filter(r => r.channelId === id)
+    for (const r of reports) delete r.channelId
     try { await this.ctx.get('credentials')?.deleteRecord(this.channelSecretKey(id)) } catch {}
     await this.save()
+    // Scheduled report prompts name the channel: rewrite them through the normal report save.
+    for (const r of reports) {
+      if (!r.scheduleId || !this.ctx.get('schedule')) continue
+      try { await this.saveReport({ ...r, channelId: undefined }) } catch (error) { console.warn('nl2sql: cannot update report %s after channel delete: %s', r.id, error.message) }
+    }
     return { deleted: id }
   },
 
@@ -311,10 +332,10 @@ export const methods = {
     const modes = chartModesOf(found.kind)
     const body = text ? String(text).slice(0, 20000) : ''
     const message = {
-      title: requireText(title || resolved[0]?.title || '数据问答', 'title', 100),
+      title: clip(String(title || resolved[0]?.title || '').trim() || '数据问答', 100),
       text: body,
       chartMode: modes.includes(chartMode) ? chartMode : modes.includes(c.chartMode) ? c.chartMode : modes[0],
-      results: resolved.map(r => pick(r, ['title', 'columns', 'rows', 'rowCount', 'truncated', 'chart', 'sql', 'filters', 'error', ...(found.kind.capabilities?.buttons ? ['actions'] : [])])),
+      results: resolved.map(r => ({ ...pick(r, ['title', 'columns', 'rows', 'rowCount', 'truncated', 'chart', 'sql', 'filters', 'error', ...(found.kind.capabilities?.buttons ? ['actions'] : [])]), ...(r.title ? { title: clip(String(r.title), 100) } : {}) })),
       includeSql: Boolean(includeSql),
       mentionAll: mentionAll ?? /<at\s+id\s*=\s*["']?all["']?\s*>/i.test(body),
       ...(template ? { template } : {}),
@@ -328,7 +349,7 @@ export const methods = {
     if (caps.files && wantAttach) {
       const idx = message.results.map((r, i) => (needsAttachment(r, shown) ? i : -1)).filter(i => i >= 0)
       if (idx.length) {
-        const sheets = idx.map(i => ({ name: (message.results[i].title || `结果${i + 1}`).slice(0, 31), columns: message.results[i].columns, rows: message.results[i].rows }))
+        const sheets = idx.map(i => ({ name: message.results[i].title || `结果${i + 1}`, columns: message.results[i].columns, rows: message.results[i].rows }))
         if (includeSql) sheets.push({ name: 'SQL', columns: [{ name: '结果', kind: 'text' }, { name: 'SQL', kind: 'text' }], rows: idx.map(i => [message.results[i].title ?? '', message.results[i].sql ?? '']) })
         const buffer = writeXlsx(sheets, { creator: 'DeepSeek Harness 数据问答' })
         const safe = String(message.title).replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60) || '数据'

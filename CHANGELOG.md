@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-12
+
+### Security
+- Row-level rules could be bypassed with MySQL `--` arithmetic (e.g. `WHERE 1--1) OR (1`): the filter injector now uses the dialect-aware lexer and refuses any rewrite where the injected rule is not a top-level conjunct.
+- The SQL guard followed JavaScript's notion of whitespace after `--`; it now follows MySQL exactly, and SQL containing control characters or non-ASCII whitespace outside literals is refused (closed table-policy and system-catalog bypasses).
+- `nl2sql_overview` ran its queries without the caller's row-level rules; it now runs as the caller.
+- A result filtered for one member could be reused (re-charted, drilled, sent) by a member with different row-level rules; results now carry a signature of the rules applied.
+- The bot's data source catalog listed tables hidden by the access policy.
+- Data values could inject mentions (`<at id=all>`) or links into Lark cards and other IM messages; data-derived text is now escaped per platform.
+
+### Fixed
+- Previewing an alert while another alert was saved could delete saved alerts; an alert edited during a check lost its state and re-fired every minute.
+- Bot commands matched any question starting with words such as 自动, 数据源, 切换 or help; commands must now be the whole message. English aliases: `help`, `sources`, `switch <name>`, `auto`, `new`.
+- Bots no longer change the page's current data source when they switch sources.
+- Deleting a channel left alerts, the schema-change notice, scheduled reports and bot conversations pointing at it.
+- Sending failed for titles longer than 100 characters; NULL numbers showed as 0; line breaks inside cells broke tables; changing a channel's type asked for unchanged secrets again; Excel sheet names with emoji could exceed Excel's limit; daily alerts handled daylight-saving transitions wrongly.
+- New file data sources had the description "上传的文件：undefined".
+- Page: the knowledge editor could save into another data source after switching; the Ask page briefly offered the previous data source's questions; dialogs and toasts did not appear inside conversation tool views; free-text dashboard filters could not take a comma; double clicks created duplicate widgets, alerts and knowledge items; unsaved settings were lost without warning; several actions failed silently; number formatting showed 0 for empty values and `10000万` / `1000K`; history labels for Telegram / WeCom / DingTalk bots; dates follow the UI language.
+- Accessibility: focus stays inside dialogs; policy rows work with the keyboard; Chinese punctuation no longer appears in the English UI.
+
 ## [0.12.1] - 2026-11-12
 
 ### Fixed
@@ -86,7 +106,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.11.1...v0.11.2

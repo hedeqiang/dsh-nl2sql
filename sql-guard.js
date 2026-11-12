@@ -34,7 +34,7 @@ const FORBIDDEN = [
  * Per-dialect lexical rules. Getting these exactly right matters: if the guard
  * thinks a quote is escaped when the server does not (or vice versa), text the
  * server executes would be hidden inside a "string".
- *   mysql:          `-- ` needs whitespace after it, `#` comments, backslash escapes in '…' and "…", `…` identifiers
+ *   mysql:          `--` starts a comment only before a char <= 0x20 or end of input, `#` comments, backslash escapes in '…' and "…", `…` identifiers
  *   postgres:       any `--` comments, no `#`, backslash escapes only inside E'…', $tag$…$tag$ dollar quoting, "…" identifiers
  *   sqlite:         any `--` comments, no `#`, no backslash escapes, "…" / `…` / […] identifiers
  *   elasticsearch:  any `--` comments, no `#`, no backslash escapes, "…" identifiers
@@ -50,6 +50,35 @@ export function dialectRules(dialect = 'mysql') {
     bracketIdents: dialect === 'sqlite',
     backtickIdents: mysql || dialect === 'sqlite',
   }
+}
+
+/**
+ * MySQL starts a `--` comment only when the next character is a control
+ * character or space (code <= 0x20) or the input ends. Unicode spaces such as
+ * U+00A0 do NOT start a comment (JS `\s` would wrongly say they do).
+ */
+export function dashDashCommentFollower(ch) {
+  return ch === undefined || ch.charCodeAt(0) <= 0x20
+}
+
+/**
+ * Characters refused outside string literals / quoted identifiers / comments:
+ * C0 controls other than \t \n \r, DEL, and any non-ASCII whitespace or
+ * format character. Servers disagree with each other (and with JS) about these,
+ * so they are a lexer-confusion hazard and never needed in real SQL.
+ */
+const SUSPICIOUS_CODE_CHAR = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F\u00A0\u1680\u180E\u2000-\u200F\u2028-\u202F\u205F-\u2064\u3000\uFEFF]/
+
+/** First suspicious character in the code (non-literal) parts of the SQL, or undefined. */
+export function suspiciousCodeChar(sql, { dialect = 'mysql' } = {}) {
+  const { segments } = lexSql(sql, { dialect })
+  for (const s of segments) {
+    // Comments are checked too: a control character right after `--` is exactly the ambiguity being refused.
+    if (s.kind === 'string' || s.kind === 'ident') continue
+    const m = SUSPICIOUS_CODE_CHAR.exec(s.text)
+    if (m) return m[0]
+  }
+  return undefined
 }
 
 /**
@@ -72,7 +101,7 @@ export function lexSql(sql, { dialect = 'mysql' } = {}) {
     const c = sql[i]
     const n = sql[i + 1]
     // -- comments
-    if (c === '-' && n === '-' && (!r.dashDashNeedsSpace || sql[i + 2] === undefined || /\s/.test(sql[i + 2]))) {
+    if (c === '-' && n === '-' && (!r.dashDashNeedsSpace || dashDashCommentFollower(sql[i + 2]))) {
       const start = i
       while (i < sql.length && sql[i] !== '\n') i++
       push('comment', start, i)
@@ -167,6 +196,8 @@ export function admitSql(input, { dialect = 'mysql' } = {}) {
   const { code, executableComment, unterminated } = stripSql(sql, { dialect })
   if (executableComment) throw new Error('MySQL executable comments (/*! ... */) are not allowed')
   if (unterminated) throw new Error('unterminated string, identifier or comment')
+  const bad = suspiciousCodeChar(sql, { dialect })
+  if (bad) throw new Error(`control or non-ASCII whitespace character U+${bad.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')} is only allowed inside string literals or quoted identifiers`)
   if (code.includes(';')) throw new Error('only one statement may be executed at a time')
   const head = (code.trim().match(/^\(*\s*([A-Za-z]+)/)?.[1] ?? '').toUpperCase()
   const allowed = ALLOWED_HEADS[dialect] ?? ALLOWED_HEADS.mysql

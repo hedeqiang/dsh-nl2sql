@@ -6,6 +6,9 @@ import { evaluateAlert } from '../analysis.js'
 import { admitSql } from '../sql-guard.js'
 import { UserError, clampInt, newId, oneOf, requireText, upsert } from './shared.js'
 
+/** Fields written by checks (not by the edit form). */
+const ALERT_RUNTIME = ['state', 'lastCheckedAt', 'lastValue', 'lastResultId', 'lastFiredAt', 'lastError']
+
 export const methods = {
   // ---------------------------------------------------------------- alerts
 
@@ -53,6 +56,10 @@ export const methods = {
 
   async saveAlert(input) {
     const a = await this.normalizeAlert(input)
+    // A check may have finished between normalize and now: keep its runtime fields
+    // (last check / fire time, state) from the stored object, never the stale copy.
+    const current = (this.state.alerts ?? []).find(x => x.id === a.id)
+    if (current) for (const k of ALERT_RUNTIME) { if (current[k] === undefined) delete a[k]; else a[k] = current[k] }
     this.state.alerts = upsert(this.state.alerts ?? [], a)
     await this.save()
     this.scheduleAlerts()
@@ -73,20 +80,18 @@ export const methods = {
 
   /** Evaluate an unsaved alert definition (form "dry run"): nothing is stored or pushed. */
   async previewAlert(input) {
-    const tmpId = `preview-${newId('al')}`
-    const saved = this.state.alerts
-    try {
-      const draft = await this.normalizeAlert({ ...input, id: undefined }, tmpId)
-      this.state.alerts = [...(saved ?? []), draft]
-      return await this.checkAlertInner(tmpId, { dryRun: true })
-    } finally {
-      this.state.alerts = saved
-    }
+    // The draft is evaluated on its own: state.alerts is never touched, so concurrent
+    // saves are kept and the draft is never persisted.
+    const draft = await this.normalizeAlert({ ...input, id: undefined }, `preview-${newId('al')}`)
+    return this.checkAlertInner(draft.id, { dryRun: true, draft })
   },
 
-  async checkAlertInner(id, { dryRun = false, force = false } = {}) {
-    const a = (this.state.alerts ?? []).find(x => x.id === id)
-    if (!a) throw new UserError('nl2sql/invalid', '告警不存在')
+  async checkAlertInner(id, { dryRun = false, force = false, draft } = {}) {
+    const found = draft ?? (this.state.alerts ?? []).find(x => x.id === id)
+    if (!found) throw new UserError('nl2sql/invalid', '告警不存在')
+    // Evaluate a snapshot; runtime fields are applied below to the object stored
+    // *after* the query (saveAlert may have replaced it meanwhile).
+    let a = draft ? structuredClone(draft) : { ...found }
     const ds = this.requireDatasource(a.datasourceId)
     let result
     if (a.source === 'metric') {
@@ -100,6 +105,10 @@ export const methods = {
     const series = vi === undefined ? [] : result.rows.map(r => ({ t: r[0], v: r[vi] === null ? null : Number(r[vi]) }))
     if (a.condition.type !== 'missing' && result.columns.length === 1 && vi === 0) series.splice(0, series.length, ...result.rows.map((r, i) => ({ t: i, v: Number(r[0]) })))
     const ev = evaluateAlert(a.condition, series, { now: Date.now() })
+    if (!draft) {
+      const current = (this.state.alerts ?? []).find(x => x.id === id)
+      if (current) a = current
+    }
     a.lastCheckedAt = Date.now()
     a.lastValue = ev.value ?? null
     a.lastResultId = result.resultId
@@ -163,12 +172,20 @@ export const methods = {
     const last = a.lastCheckedAt ?? 0
     if (a.every === '15m') return last + 15 * 60000
     if (a.every === 'hour') return last + 60 * 60000
-    // daily at HH:MM local time: the most recent slot not yet covered by lastCheckedAt.
+    // daily at HH:MM local wall time: the most recent slot not yet covered by lastCheckedAt.
+    // DST (same rule as the Harness schedule service): a slot that does not exist
+    // that day (spring forward) is skipped; a repeated one (fall back) is the earlier instant.
     const [hh, mm] = String(a.at ?? '09:00').split(':').map(Number)
-    const slot = new Date(now)
-    slot.setHours(hh, mm, 0, 0)
-    if (slot.getTime() > now) slot.setDate(slot.getDate() - 1)
-    return last < slot.getTime() ? slot.getTime() : (() => { const n = new Date(slot); n.setDate(n.getDate() + 1); return n.getTime() })()
+    const today = new Date(now)
+    const slotOn = (offset) => {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset, hh, mm, 0, 0)
+      return d.getHours() === hh && d.getMinutes() === mm ? d.getTime() : undefined
+    }
+    let prev
+    for (let k = 0; k >= -3 && prev === undefined; k--) { const s = slotOn(k); if (s !== undefined && s <= now) prev = s }
+    if (prev !== undefined && last < prev) return prev
+    for (let k = 0; k <= 3; k++) { const s = slotOn(k); if (s !== undefined && s > now && s > last) return s }
+    return now + 86400000
   },
 
   async withJobLock(key, fn) {
@@ -192,12 +209,15 @@ export const methods = {
             this.checkAlert(a.id),
             new Promise((_, rej) => { const t = setTimeout(() => rej(new Error(`检查超过 ${Math.round(timeoutMs / 1000)} 秒`)), timeoutMs); t.unref?.() }),
           ])
-          a.lastError = undefined
+          // The stored object may have been replaced by an edit meanwhile.
+          const cur = (this.state.alerts ?? []).find(x => x.id === a.id)
+          if (cur) cur.lastError = undefined
           ran.push({ id: a.id, ok: true })
         } catch (error) {
           if (error.code === 'nl2sql/busy') return
-          a.lastError = error.message
-          a.lastCheckedAt = Date.now()
+          const cur = (this.state.alerts ?? []).find(x => x.id === a.id) ?? a
+          cur.lastError = error.message
+          cur.lastCheckedAt = Date.now()
           ran.push({ id: a.id, ok: false, error: error.message })
         }
       }))

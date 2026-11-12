@@ -66,10 +66,10 @@
         seen.loading && !seen.value ? h('div', { className: 'n2s-skel', style: { height: 34 } }) :
           items.length === 0
             ? h('div', { className: 'n2s-faint n2s-small' }, kind === 'chat' ? t('mb.pick.noChats') : t('mb.pick.noPeople'))
-            : h('div', { className: 'n2s-pickchips', role: 'list' }, items.slice(0, 30).map(x => {
+            : h('div', { className: 'n2s-pickchips', role: 'group', 'aria-label': kind === 'chat' ? t('mb.pick.chats') : t('mb.pick.people') }, items.slice(0, 30).map(x => {
               const taken = x.memberId && !isChosen(x)
               return h('button', {
-                key: `${x.platform}:${x.id}`, type: 'button', role: 'listitem', className: 'n2s-pickchip', 'aria-pressed': isChosen(x), disabled: Boolean(taken),
+                key: `${x.platform}:${x.id}`, type: 'button', className: 'n2s-pickchip', 'aria-pressed': isChosen(x), disabled: Boolean(taken),
                 title: [`${platformName(t, x.platform, catalog)} · ${x.id}`, x.email, x.via ? fmt(t, 'mb.pick.via', { name: x.via }) : '', taken ? fmt(t, 'mb.pick.taken', { name: x.memberName }) : '', x.refused ? t('mb.pick.refused') : ''].filter(Boolean).join('\n'),
                 onClick: () => onPick(x),
               },
@@ -247,8 +247,8 @@
               h('span', { className: 'n2s-tile', 'aria-hidden': true }, u.kind === 'chat' ? t('mb.chatShort') : (u.name || '?').slice(0, 1)),
               h('div', { className: 'n2s-grow', style: { minWidth: 0 } },
                 h('div', { className: 'n2s-row', style: { gap: 6 } }, h('span', { className: 'n2s-list2-title' }, u.name), h('span', { className: 'n2s-badge' }, t(`mb.role.${u.role}`)), u.disabled && h('span', { className: 'n2s-badge err' }, t('mb.disabled'))),
-                h('div', { className: 'n2s-row', style: { gap: 6, marginTop: 4 } }, h(IdentityChips, { t, u, catalog }), h('span', { className: 'n2s-muted n2s-small' }, u.datasourceIds === null ? t('mb.allDs') : (u.datasourceNames ?? []).join(uiLang === 'zh' ? '、' : ', ') || t('mb.noDs'))),
-                (u.rowRules ?? []).length > 0 && h('div', { className: 'n2s-list2-sub' }, `${colon(t('mb.rowRules'))}${u.rowRules.map(r => `${r.column} ∈ {${r.values.join(', ')}}`).join('；')}`)),
+                h('div', { className: 'n2s-row', style: { gap: 6, marginTop: 4 } }, h(IdentityChips, { t, u, catalog }), h('span', { className: 'n2s-muted n2s-small' }, u.datasourceIds === null ? t('mb.allDs') : (u.datasourceNames ?? []).join(listSep()) || t('mb.noDs'))),
+                (u.rowRules ?? []).length > 0 && h('div', { className: 'n2s-list2-sub' }, `${colon(t('mb.rowRules'))}${joinClauses(u.rowRules.map(r => `${r.column} ∈ {${r.values.join(', ')}}`))}`)),
               h('div', { className: 'n2s-list2-side' }, h('span', { className: 'n2s-small' }, us ? fmt(t, 'mb.queries', { n: us.queries }) : t('mb.noUsage')), us?.lastAt && h('span', { className: 'n2s-faint n2s-small' }, new Date(us.lastAt).toLocaleDateString())),
               h(Dropdown, { label: fmt(t, 'ch.actionsFor', { name: u.name }), trigger: { content: Icon.more() }, items: [
                 { label: t('ds.edit'), icon: Icon.edit(14), onClick: () => setEditing(u) },

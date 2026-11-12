@@ -14,6 +14,11 @@
       }, [])
       const [state, setState] = useState(null)
       const ref = useRef(null)
+      useFocusTrap(ref)
+      const closeTimer = useRef(null)
+      useEffect(() => () => clearTimeout(closeTimer.current), [])
+      const busyRef = useRef(false)
+      busyRef.current = Boolean(state?.busy)
       useEffect(() => {
         const def = channels.find(c => c.isDefault) ?? channels[0]
         if (def && !form.channelId) setForm(f => ({ ...f, channelId: def.id }))
@@ -21,11 +26,14 @@
       useEffect(() => {
         const prev = document.activeElement
         ref.current?.querySelector('select, textarea, input, button')?.focus()
-        const onKey = (e) => { if (e.key === 'Escape') onClose() }
+        // Escape belongs to a confirm/prompt dialog on top, if any.
+        const onKey = (e) => { if (e.key === 'Escape' && !feedbackStore.get().dialog) onClose() }
         document.addEventListener('keydown', onKey)
         return () => { document.removeEventListener('keydown', onKey); prev?.focus?.() }
       }, [])
       const send = async () => {
+        if (busyRef.current) return
+        busyRef.current = true
         setState({ busy: true })
         try {
           const res = initial.dashboard
@@ -33,7 +41,7 @@
             : await call('sendToChannel', { channelId: form.channelId, title: form.title, text: form.text, resultIds, includeSql: form.includeSql, attachFull: form.attachFull, ...(form.chartMode ? { chartMode: form.chartMode } : {}), sessionId: initial.message?.sessionId })
           setState({ ok: `${fmt(t, 'im.sent', { channel: res.channel, images: res.images })}${res.files ? ` · ${t('im.sentFile')}` : ''}`, warn: res.warning })
           refreshChannels()
-          setTimeout(onClose, 1200)
+          closeTimer.current = setTimeout(onClose, 1200)
         } catch (e) {
           setState({ error: e.message })
         }

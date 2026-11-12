@@ -1,24 +1,31 @@
     function FeedbackForm({ t, onCancel, onSubmit }) {
       const [comment, setComment] = useState('')
+      const [busy, runBusy] = useBusy()
       const reasons = ['fb.reason.wrongTable', 'fb.reason.wrongMetric', 'fb.reason.wrongFilter', 'fb.reason.wrongTime', 'fb.reason.chart']
       return h('div', { className: 'n2s-card', style: { padding: 10 } },
         h('div', { className: 'n2s-small', style: { marginBottom: 6 } }, t('fb.whatWrong')),
-        h('div', { className: 'n2s-chips', style: { marginBottom: 6 } }, reasons.map(r => h('button', { key: r, type: 'button', className: 'n2s-chip', onClick: () => setComment(c => (c ? `${c}；${t(r)}` : t(r))) }, t(r)))),
+        h('div', { className: 'n2s-chips', style: { marginBottom: 6 } }, reasons.map(r => h('button', { key: r, type: 'button', className: 'n2s-chip', onClick: () => setComment(c => (c ? joinClauses([c, t(r)]) : t(r))) }, t(r)))),
         h('textarea', { className: 'n2s-textarea', style: { minHeight: 56 }, value: comment, onChange: e => setComment(e.target.value), placeholder: t('fb.commentPh') }),
         h('div', { className: 'n2s-row', style: { marginTop: 8, justifyContent: 'flex-end' } },
           h('button', { type: 'button', className: 'n2s-btn small ghost', onClick: onCancel }, t('ds.cancel')),
-          h('button', { type: 'button', className: 'n2s-btn small primary', onClick: () => onSubmit(comment.trim()) }, t('fb.submit'))))
+          h('button', { type: 'button', className: 'n2s-btn small primary', disabled: busy, onClick: () => runBusy(() => onSubmit(comment.trim())) }, busy ? h('span', { className: 'n2s-spin' }) : null, t('fb.submit'))))
     }
 
     function FeedbackSection({ t, ds }) {
       const [status, setStatus] = useState('open')
-      const list = useAsync(() => call('listFeedback', { datasourceId: ds?.id, ...(status ? { status } : {}) }), [ds?.id, status])
-      const stats = useAsync(() => call('feedbackStats', { datasourceId: ds?.id }), [ds?.id, list.value])
+      const list = useAsync(() => call('listFeedback', { datasourceId: ds?.id, ...(status ? { status } : {}) }), [ds?.id, status], [ds?.id])
+      const stats = useAsync(() => call('feedbackStats', { datasourceId: ds?.id }), [ds?.id, list.value], [ds?.id])
       const [fixing, setFixing] = useState(null)
       const [error, setError] = useState(null)
-      const resolve = async (payload) => {
+      const [busy, runBusy] = useBusy()
+      const resolve = (payload) => runBusy(async () => {
         setError(null)
         try { await call('resolveFeedback', payload); setFixing(null); list.reload() } catch (e) { setError(e.message) }
+      })
+      const remove = async (f) => {
+        if (!await confirmDialog({ title: t('fb.deleteConfirm'), message: f.question || f.title || '', confirmLabel: t('ds.delete'), danger: true })) return
+        try { await call('deleteFeedback', { id: f.id }) } catch (e) { notifyError(e) }
+        list.reload()
       }
       const st = stats.value
       return h('div', null,
@@ -40,13 +47,13 @@
                 h('span', { className: 'n2s-muted n2s-small' }, new Date(f.at).toLocaleString())),
               f.comment && h('div', { className: 'n2s-small', style: { marginTop: 4 } }, f.comment),
               h('pre', { className: 'n2s-code', style: { marginTop: 6 } }, f.correctedSql || f.sql),
-              f.resolution && h('div', { className: 'n2s-muted n2s-small', style: { marginTop: 4 } }, `${t('fb.resolution')}: ${f.resolution}`)),
+              f.resolution && h('div', { className: 'n2s-muted n2s-small', style: { marginTop: 4 } }, `${colon(t('fb.resolution'))}${f.resolution}`)),
             h('div', { style: { display: 'grid', gap: 4 } },
               f.sessionId && h('button', { type: 'button', className: 'n2s-btn small', onClick: () => fbCtx.openSession?.(f.sessionId) }, t('hist.openSession')),
               f.status === 'open' && h('button', { type: 'button', className: 'n2s-btn small primary', onClick: () => setFixing({ id: f.id, sql: f.sql, question: f.question || f.title, resolution: '' }) }, t('fb.fix')),
               f.status === 'open' && h('button', { type: 'button', className: 'n2s-btn small', onClick: () => resolve({ id: f.id, status: 'ignored' }) }, t('fb.ignore')),
               f.rating === 'up' && !f.savedAsExample && h('button', { type: 'button', className: 'n2s-btn small', onClick: () => resolve({ id: f.id, status: 'resolved', saveExample: true }) }, t('kb.saveExample')),
-              h('button', { type: 'button', className: 'n2s-btn small ghost danger', onClick: async () => { await call('deleteFeedback', { id: f.id }); list.reload() } }, t('ds.delete')))),
+              h('button', { type: 'button', className: 'n2s-btn small ghost danger', onClick: () => remove(f) }, t('ds.delete')))),
           fixing?.id === f.id && h('div', { className: 'n2s-ask', style: { marginTop: 10 } },
             h('label', { className: 'n2s-field' }, h('span', null, t('kb.question')), h('input', { className: 'n2s-input', value: fixing.question, onChange: e => setFixing(x => ({ ...x, question: e.target.value })) })),
             h('label', { className: 'n2s-field' }, h('span', null, t('fb.correctedSql')), h('textarea', { className: 'n2s-textarea n2s-mono', style: { minHeight: 120 }, spellCheck: false, value: fixing.sql, onChange: e => setFixing(x => ({ ...x, sql: e.target.value })) })),

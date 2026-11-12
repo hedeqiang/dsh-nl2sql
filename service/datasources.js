@@ -3,7 +3,7 @@
  * Mixed into the service prototype by index.js; `this` is the service.
  */
 import { DIALECTS, createDriver, describeError } from '../drivers.js'
-import { normalizePolicy, policyActive } from '../policy.js'
+import { filterSchema, normalizePolicy, policyActive } from '../policy.js'
 import { sanitizeTableName } from '../sqlite-driver.js'
 import { join } from 'node:path'
 import { CREDENTIAL_SCOPE, DEFAULT_SETTINGS, RETENTION_MAX, RETENTION_MIN, SUPPORTED_TYPES, UserError, clampInt, newId, oneOf, pick, requireText } from './shared.js'
@@ -308,14 +308,27 @@ export const methods = {
     return current
   },
 
-  async bindSession(sessionId, datasourceId) {
+  /**
+   * The already-analyzed schema (memory or file, no introspection) restricted by the
+   * access policy — the same view nl2sql_schema gives the model. Undefined when not analyzed.
+   */
+  async cachedVisibleSchema(ds) {
+    const schema = this.schemas.get(ds.id) ?? await this.readSchemaFile(ds.id)
+    return schema ? filterSchema(schema, this.policyFor(ds)) : undefined
+  },
+
+  /**
+   * Bind a session to a data source. The page RPC also makes it the page's current data source
+   * (default); agent tools (including bot sessions) pass setCurrent: false so they never move it.
+   */
+  async bindSession(sessionId, datasourceId, { setCurrent = true } = {}) {
     if (!sessionId) throw new UserError('nl2sql/invalid', '缺少会话')
     if (datasourceId === null) {
       delete this.state.sessions[sessionId]
     } else {
       const ds = this.requireDatasource(datasourceId)
       this.state.sessions[sessionId] = ds.id
-      this.state.current = ds.id
+      if (setCurrent) this.state.current = ds.id
     }
     await this.save()
     return this.sessionInfo(sessionId)

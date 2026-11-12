@@ -14,8 +14,9 @@ export function num(v) {
   return v === null || v === undefined || v === '' ? null : Number(v)
 }
 
-/** Compact number: 1.23亿 / 4.56万 / integers as-is / two decimals. */
+/** Compact number: 1.23亿 / 4.56万 / integers as-is / two decimals. NULL / '' → ''. */
 export function fmtNum(v) {
+  if (v === null || v === undefined || v === '') return ''
   const n = Number(v)
   if (!Number.isFinite(n)) return String(v ?? '')
   if (Math.abs(n) >= 1e8) return `${(n / 1e8).toFixed(2)}亿`
@@ -30,10 +31,44 @@ export function cellText(v, max = 80) {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
-/** A KPI-style result (one row) as `**col**：value ｜ …` Markdown. */
-export function kpiText(result, { separator = '　｜　', bold = true } = {}) {
+/** Line breaks (CR, LF, CRLF) → one space: keeps table rows and inline Markdown on one line. */
+export function oneLine(s) {
+  return String(s ?? '').replace(/\r\n?|\n/g, ' ')
+}
+
+/**
+ * Lark card Markdown: data-derived text (cell values, column names, result titles,
+ * errors, footers) as literal text. Lark documents HTML numeric entities for
+ * characters that would trigger Markdown / tags (`<at>`, `<font>`, links, emphasis).
+ * https://open.larksuite.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-components/content-components/rich-text
+ */
+export function escapeLarkMd(s) {
+  return oneLine(s)
+    .replace(/&(?=#?\w+;)/g, '&#38;')
+    .replace(/[<>[\]*_~`\\]/g, ch => `&#${ch.charCodeAt(0)};`)
+}
+
+/**
+ * Neutralize link / tag syntax in data-derived text for platforms whose Markdown
+ * has no reliable escape (WeCom, DingTalk): `<` `>` `[` `]` become full-width look-alikes,
+ * so values cannot create links, images, `<@user>` mentions or `<font>` tags.
+ */
+export function defangMd(s) {
+  return oneLine(s).replace(/[<>[\]]/g, ch => ({ '<': '＜', '>': '＞', '[': '［', ']': '］' })[ch])
+}
+
+/**
+ * A KPI-style result (one row) as `**col**：value ｜ …` Markdown. NULL shows as '—'.
+ * `escape` is applied to data-derived text (column names and values).
+ */
+export function kpiText(result, { separator = '　｜　', bold = true, escape = defangMd } = {}) {
   const row = result.rows?.[0] ?? []
-  return result.columns.map((c, i) => `${bold ? `**${c.name}**` : c.name}：${c.kind === 'number' ? fmtNum(row[i]) : cellText(row[i])}`).join(separator)
+  return result.columns.map((c, i) => {
+    const raw = c.kind === 'number' ? fmtNum(row[i]) : cellText(row[i])
+    const value = raw === '' ? '—' : escape(oneLine(raw))
+    const name = escape(oneLine(c.name))
+    return `${bold ? `**${name}**` : name}：${value}`
+  }).join(separator)
 }
 
 /** True when the result should be shown as KPI text rather than a table/chart. */
@@ -59,8 +94,8 @@ export function needsAttachment(result, shown) {
   return (result.rowCount ?? result.rows.length) > shown
 }
 
-export function resultMeta(result) {
-  return `${result.rowCount ?? result.rows?.length ?? 0} 行${result.truncated ? '（已截断）' : ''}${result.filters?.length ? ` · 已筛选：${result.filters.map(f => f.description).join('；')}` : ''}`
+export function resultMeta(result, { escape = defangMd } = {}) {
+  return `${result.rowCount ?? result.rows?.length ?? 0} 行${result.truncated ? '（已截断）' : ''}${result.filters?.length ? ` · 已筛选：${result.filters.map(f => escape(f.description)).join('；')}` : ''}`
 }
 
 // ------------------------------------------------------- chart rendering
@@ -207,7 +242,7 @@ export function toPlainText(md) {
 }
 
 function mdCell(v, max = 40) {
-  return cellText(v, max).replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  return defangMd(cellText(v, max)).replace(/\|/g, '\\|')
 }
 
 /** A result as a Markdown table (≤ maxRows rows, ≤ maxCols columns), with a "… N more" note when cut. */
@@ -229,7 +264,7 @@ export function resultAsMarkdownTable(result, maxRows = 10, { maxCols = 8 } = {}
 export function resultAsText(result, maxRows = 10, { maxCols = 6 } = {}) {
   const cols = (result.columns ?? []).slice(0, maxCols)
   const rows = (result.rows ?? []).slice(0, maxRows)
-  const lines = [cols.map(c => c.name).join(' | '), ...rows.map(r => cols.map((c, i) => (c.kind === 'number' ? fmtNum(r[i]) : cellText(r[i], 30))).join(' | '))]
+  const lines = [cols.map(c => c.name).join(' | '), ...rows.map(r => cols.map((c, i) => oneLine(c.kind === 'number' ? fmtNum(r[i]) : cellText(r[i], 30))).join(' | '))]
   const total = result.rowCount ?? result.rows?.length ?? 0
   if (total > rows.length) lines.push(`…共 ${total} 行`)
   return lines.join('\n')
@@ -243,11 +278,12 @@ export function resultAsText(result, maxRows = 10, { maxCols = 6 } = {}) {
 export function messageAsMarkdown(message, { markdown = 'basic', maxRows = 10, sqlMax = 1500 } = {}) {
   const clean = markdown === 'full' ? normalizeMarkdown : markdown === 'none' ? toPlainText : toPlainMarkdown
   const parts = []
-  if (message.title) parts.push(markdown === 'none' ? String(message.title) : `**${message.title}**`)
+  if (message.title) parts.push(markdown === 'none' ? oneLine(message.title) : `**${defangMd(message.title)}**`)
   if (message.text) parts.push(clean(message.text))
   for (const r of message.results ?? []) {
-    const head = markdown === 'none' ? `${r.title || '查询结果'}` : `**${r.title || '查询结果'}**`
-    if (r.error) { parts.push(`${head}\n${r.error}`); continue }
+    // Result titles, errors and cells are data-derived: no Markdown / tags from them.
+    const head = markdown === 'none' ? oneLine(r.title || '查询结果') : `**${defangMd(r.title || '查询结果')}**`
+    if (r.error) { parts.push(`${head}\n${markdown === 'none' ? r.error : defangMd(r.error)}`); continue }
     const lines = [`${head}  ${resultMeta(r)}`]
     if (!r.rows?.length) lines.push('无数据')
     else if (isKpi(r)) lines.push(kpiText(r, { bold: markdown !== 'none' }))
@@ -255,7 +291,7 @@ export function messageAsMarkdown(message, { markdown = 'basic', maxRows = 10, s
     if (r.sql && message.includeSql) lines.push(markdown === 'none' ? r.sql.slice(0, sqlMax) : `\`\`\`sql\n${r.sql.slice(0, sqlMax)}\n\`\`\``)
     parts.push(lines.join('\n'))
   }
-  if (message.footer) parts.push(clean(message.footer))
+  if (message.footer) parts.push(markdown === 'none' ? toPlainText(message.footer) : defangMd(toPlainMarkdown(message.footer)))
   return parts.join('\n\n')
 }
 

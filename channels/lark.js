@@ -16,7 +16,7 @@
  */
 import { createHash, createHmac } from 'node:crypto'
 import { ChannelError, request } from './http.js'
-import { MD_TABLE, cellText, chartOption, chartable, dualAxis, kpiText, isKpi, needsAttachment, num, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
+import { MD_TABLE, cellText, chartOption, chartable, dualAxis, escapeLarkMd, kpiText, isKpi, needsAttachment, num, oneLine, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
 
 export { ChannelError, ChannelError as ImError, chartOption, chartable, dualAxis, renderChartPng }
 
@@ -704,7 +704,13 @@ function tableElement(result, maxRows) {
     row_height: 'low',
     header_style: { background_style: 'grey', bold: true, text_size: 'normal' },
     columns: cols.map((c, i) => ({ name: `c${i}`, display_name: c.name, data_type: c.kind === 'number' ? 'number' : 'text', ...(c.kind === 'number' ? { format: { separator: true } } : {}), width: 'auto' })),
-    rows: result.rows.slice(0, maxRows).map(r => Object.fromEntries(cols.map((c, i) => [`c${i}`, c.kind === 'number' && Number.isFinite(Number(r[i])) ? Number(r[i]) : cellText(r[i])]))),
+    // NULL / '' numbers stay empty (Number(null) would show 0); line breaks would break rows.
+    rows: result.rows.slice(0, maxRows).map(r => Object.fromEntries(cols.flatMap((c, i) => {
+      const v = r[i]
+      if (c.kind !== 'number') return [[`c${i}`, oneLine(cellText(v))]]
+      if (v === null || v === undefined || v === '') return [] // empty cell, not 0
+      return [[`c${i}`, Number.isFinite(Number(v)) ? Number(v) : oneLine(cellText(v))]]
+    }))),
   }
 }
 
@@ -840,15 +846,17 @@ export function buildCard(message, { maxRows = 50, charts = true, actions = true
   for (const r of message.results ?? []) {
     if (elements.length) elements.push({ tag: 'hr' })
     if (r.error) {
-      elements.push({ tag: 'markdown', content: `**${r.title || '查询'}**\n<font color='red'>${r.error}</font>` })
+      elements.push({ tag: 'markdown', content: `**${escapeLarkMd(r.title || '查询')}**\n<font color='red'>${escapeLarkMd(r.error)}</font>` })
       continue
     }
-    elements.push({ tag: 'markdown', content: [`**${r.title || '查询结果'}**`, `<font color='grey'>${resultMeta(r)}</font>`].join('  ') })
+    // Everything data-derived (titles, values, errors, footer) is escaped: a cell like
+    // `<at id=all></at>` or `[x](https://…)` must show as text, not mention or link.
+    elements.push({ tag: 'markdown', content: [`**${escapeLarkMd(r.title || '查询结果')}**`, `<font color='grey'>${resultMeta(r, { escape: escapeLarkMd })}</font>`].join('  ') })
     const nativeChart = charts && chartCount < 5 && chartable(r) ? chartElement(r) : undefined
     if (r.rows.length === 0) {
       elements.push({ tag: 'markdown', content: '<font color=\'grey\'>无数据</font>' })
     } else if (isKpi(r)) {
-      elements.push({ tag: 'markdown', content: kpiText(r) })
+      elements.push({ tag: 'markdown', content: kpiText(r, { escape: escapeLarkMd }) })
     } else if (nativeChart) {
       elements.push(nativeChart)
       chartCount++
@@ -860,7 +868,7 @@ export function buildCard(message, { maxRows = 50, charts = true, actions = true
       const note = omittedNote(r, Math.min(maxRows, r.rows.length), { attached: Boolean(r.attached) })
       if (note) elements.push({ tag: 'markdown', content: `<font color='grey'>${note}</font>`, text_size: 'notation' })
     } else {
-      elements.push({ tag: 'markdown', content: r.rows.slice(0, 5).map(row => row.slice(0, 6).map(v => cellText(v)).join(' | ')).join('\n') })
+      elements.push({ tag: 'markdown', content: r.rows.slice(0, 5).map(row => row.slice(0, 6).map(v => escapeLarkMd(cellText(v))).join(' | ')).join('\n') })
       const note = omittedNote(r, Math.min(5, r.rows.length), { attached: Boolean(r.attached) })
       if (note) elements.push({ tag: 'markdown', content: `<font color='grey'>${note}</font>`, text_size: 'notation' })
     }
@@ -871,7 +879,7 @@ export function buildCard(message, { maxRows = 50, charts = true, actions = true
     }
     if (r.sql && message.includeSql) elements.push({ tag: 'markdown', content: `\`\`\`sql\n${r.sql.slice(0, 1500)}\n\`\`\`` })
   }
-  if (message.footer) elements.push({ tag: 'markdown', content: `<font color='grey'>${message.footer}</font>`, text_size: 'notation' })
+  if (message.footer) elements.push({ tag: 'markdown', content: `<font color='grey'>${escapeLarkMd(message.footer)}</font>`, text_size: 'notation' })
   const card = {
     schema: '2.0',
     config: { wide_screen_mode: true, summary: { content: String(message.title).slice(0, 60) } },
@@ -894,10 +902,10 @@ export function legacyCard(card) {
   const md = card.body.elements.map(e => {
     if (e.tag === 'markdown') return e.content
     if (e.tag === 'hr') return '---'
-    if (e.tag === 'table') return [e.columns.map(c => c.display_name).join(' | '), ...e.rows.slice(0, 10).map(r => e.columns.map(c => cellText(r[c.name])).join(' | '))].join('\n')
+    if (e.tag === 'table') return [e.columns.map(c => escapeLarkMd(c.display_name)).join(' | '), ...e.rows.slice(0, 10).map(r => e.columns.map(c => escapeLarkMd(cellText(r[c.name]))).join(' | '))].join('\n')
     if (e.tag === 'chart') {
       const v = e.chart_spec.data?.values ?? e.chart_spec.data?.[0]?.values ?? []
-      return v.slice(0, 10).map(x => Object.values(x).map(y => cellText(y)).join(' | ')).join('\n')
+      return v.slice(0, 10).map(x => Object.values(x).map(y => escapeLarkMd(cellText(y))).join(' | ')).join('\n')
     }
     return ''
   }).filter(Boolean).join('\n\n')

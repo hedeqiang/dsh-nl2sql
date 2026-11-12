@@ -208,6 +208,16 @@ const STYLES_XML = XML_HEAD +
 
 const SHEET_NAME_BAD_RE = /[\[\]:*?/\\]/g;
 
+/** First `max` UTF-16 units of `s` (Excel's sheet-name limit), never splitting a surrogate pair. */
+function utf16Prefix(s, max) {
+  let out = '';
+  for (const ch of s) {
+    if (out.length + ch.length > max) break;
+    out += ch;
+  }
+  return out;
+}
+
 /** Make Excel-safe, unique (case-insensitive), non-empty sheet names. */
 function sanitizeSheetNames(names) {
   const used = new Set(['history']); // "History" is reserved by Excel
@@ -215,11 +225,11 @@ function sanitizeSheetNames(names) {
     let base = stripIllegal(String(raw ?? '')).replace(SHEET_NAME_BAD_RE, '_').replace(/[\r\n\t]/g, ' ').trim();
     base = base.replace(/^'+|'+$/g, '').trim();
     if (!base) base = `Sheet${i + 1}`;
-    base = Array.from(base).slice(0, 31).join('');
+    base = utf16Prefix(base, 31);
     let name = base;
     for (let n = 2; used.has(name.toLowerCase()); n++) {
       const suffix = ` (${n})`;
-      name = Array.from(base).slice(0, 31 - suffix.length).join('').trimEnd() + suffix;
+      name = utf16Prefix(base, 31 - suffix.length).trimEnd() + suffix;
     }
     used.add(name.toLowerCase());
     return name;

@@ -143,6 +143,64 @@ try {
     await call('savePolicy', { id: dsA.id, policy: { mode: 'all' } })
   })
 
+  // ------------------------------------------------------------ security review 2
+  await test('row rules: MySQL `1--1) OR (1` cannot break out of the injected predicate', async () => {
+    const ex = { agent: { id: 'row-s' } }
+    await assert.rejects(tool('nl2sql_query', { sql: 'select status, count(*) n from blockchain_transactions WHERE 1--1) OR (1\ngroup by status' }, ex), /行级权限/)
+    // a trailing line comment cannot swallow the injected WHERE either
+    const r = await tool('nl2sql_query', { sql: 'select status, count(*) n from blockchain_transactions -- note\ngroup by status' }, ex)
+    assert.equal(r.display.rowCount, 1, 'still only status=1')
+  })
+  await test('guard: `--<NBSP>` / `--\\x01` lexer confusion refused before running', async () => {
+    await call('savePolicy', { id: dsA.id, policy: { mode: 'deny', tables: ['callback_*'], hiddenColumns: [], maskedColumns: [] } })
+    const q = (sql) => call('runQuery', { datasourceId: dsA.id, sql })
+    await assert.rejects(q("SELECT 1 AS \u00a0 FROM wallets HAVING 0--\u00a0 UNION ALL SELECT concat('LEAK:', count(*)) FROM callback_configs"), /U\+00A0/)
+    await assert.rejects(q("SELECT 1 AS x --\u0001 '\nUNION ALL SELECT count(*) FROM callback_configs -- '"), /U\+0001/)
+    await call('savePolicy', { id: dsA.id, policy: { mode: 'all' } })
+  })
+  await test('nl2sql_overview runs as the actor: row rules applied and audited', async () => {
+    const ov = await tool('nl2sql_overview', { table: 'blockchain_transactions' }, { agent: { id: 'row-s' } })
+    const ok = ov.display.results.filter(r => !r.error)
+    assert.ok(ok.length > 0)
+    for (const r of ok) assert.match(r.sql, /`status` IN \('1'\)/, r.title)
+    const resultIds = new Set(ok.map(r => r.resultId))
+    const hist = service.records.list('history', { limit: 200, filter: h => resultIds.has(h.resultId) })
+    assert.ok(hist.length > 0, 'overview queries are audited')
+    for (const h of hist) assert.equal(h.actor?.id, 'r', 'audited as the actor, not the owner')
+  })
+  await test('results: another actor\'s row-filtered result (different rules) is refused', async () => {
+    service.state.sessionActors['row-s0'] = { id: 'r0', name: 'R0', kind: 'lark', datasourceIds: [dsA.id], role: 'analyst', rowRules: [{ column: 'status', values: ['0'] }] }
+    service.state.sessions['row-s0'] = dsA.id
+    const own = await tool('nl2sql_query', { sql: 'select status, count(*) n from blockchain_transactions group by status' }, { agent: { id: 'row-s' } })
+    await assert.rejects(tool('nl2sql_chart', { resultId: own.display.resultId, chart: { type: 'table' } }, { agent: { id: 'row-s0' } }), /行级权限/)
+    // the owner of the rules may still use it
+    const mine = await tool('nl2sql_chart', { resultId: own.display.resultId, chart: { type: 'table' } }, { agent: { id: 'row-s' } })
+    assert.ok(mine.display.resultId)
+    // a legacy result tagged rowPolicy but without a signature is refused
+    const legacy = { ...service.getResult(own.display.resultId), resultId: 'r-legacy-nosig' }
+    delete legacy.rowRulesSig
+    service.remember(legacy)
+    await assert.rejects(tool('nl2sql_chart', { resultId: 'r-legacy-nosig', chart: { type: 'table' } }, { agent: { id: 'row-s' } }), /行级权限/)
+  })
+  await test('datasourceCatalog lists only policy-visible tables', async () => {
+    await call('savePolicy', { id: dsA.id, policy: { mode: 'allow', tables: ['wallets'], hiddenColumns: [], maskedColumns: [] } })
+    const cat = await service.datasourceCatalog([service.findDatasource(dsA.id)])
+    assert.match(cat, /wallets/)
+    assert.doesNotMatch(cat, /blockchain_transactions|callback_/)
+    await call('savePolicy', { id: dsA.id, policy: { mode: 'all' } })
+  })
+  await test('nl2sql_datasource use from a bot session does not move the page current data source', async () => {
+    service.state.sessionActors['bot-s'] = { id: 'b', name: 'Bot', kind: 'lark', datasourceIds: [dsA.id, dsB.id], role: 'analyst' }
+    await call('setCurrent', { id: dsB.id })
+    await tool('nl2sql_datasource', { action: 'use', datasource: dsA.id }, { agent: { id: 'bot-s' } })
+    assert.equal(service.state.sessions['bot-s'], dsA.id, 'session bound')
+    assert.equal(service.state.current, dsB.id, 'page current unchanged')
+    // the page RPC still sets current
+    await call('bindSession', { sessionId: 'page-s', datasourceId: dsA.id })
+    assert.equal(service.state.current, dsA.id)
+    await call('setCurrent', { id: dsB.id })
+  })
+
   // ------------------------------------------------------------ records in SQLite
   await test('history / feedback / deliveries live in SQLite, not state.json', async () => {
     const h = await call('listHistory', { limit: 5 })

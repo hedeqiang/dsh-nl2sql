@@ -13,6 +13,16 @@
     const joinList = (items, sep) => (items ?? []).filter(x => x !== undefined && x !== null && x !== '').join(sep ?? (uiLang === 'zh' ? '、' : ', '))
     /** Label + colon in the UI language: 「标签：」 / "Label: ". */
     const colon = (label) => (uiLang === 'zh' ? `${label}：` : `${label}: `)
+    /** List separator in the UI language. */
+    const listSep = () => (uiLang === 'zh' ? '、' : ', ')
+    /** Clauses joined in the UI language: 「a；b」 / "a; b". */
+    const joinClauses = (items) => joinList(items, uiLang === 'zh' ? '；' : '; ')
+    /** Parenthetical in the UI language: 「（x）」 / " (x)". */
+    const paren = (s) => (s === undefined || s === null || s === '' ? '' : uiLang === 'zh' ? `（${s}）` : ` (${s})`)
+    /** Quoted name in the UI language: 「x」 / "x". */
+    const quoted = (s) => (uiLang === 'zh' ? `「${s}」` : `"${s}"`)
+    /** BCP 47 tag for Intl formatting in the UI language. */
+    const uiLocale = () => (uiLang === 'zh' ? 'zh-CN' : 'en-US')
     const setUiLang = (snapshot) => {
       const id = typeof snapshot === 'string' ? snapshot : (snapshot?.active ?? snapshot?.locale ?? 'zh')
       uiLang = /^zh/i.test(String(id)) ? 'zh' : 'en'
@@ -27,18 +37,26 @@
     }
 
     function formatCompact(v) {
+      if (v === null || v === undefined || v === '') return '—'
       const n = Number(v)
-      if (!Number.isFinite(n)) return String(v ?? '—')
+      if (!Number.isFinite(n)) return String(v)
       const abs = Math.abs(n)
-      if (uiLang !== 'zh') {
-        if (abs >= 1e9) return `${(n / 1e9).toFixed(abs >= 1e11 ? 0 : 2)}B`
-        if (abs >= 1e6) return `${(n / 1e6).toFixed(abs >= 1e8 ? 0 : 1)}M`
-        if (abs >= 1e5) return `${(n / 1e3).toFixed(0)}K`
-        return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      // [divisor, suffix, threshold, digits(abs)] from the largest unit down.
+      const scales = uiLang === 'zh'
+        ? [[1e8, '亿', 1e8, a => (a >= 1e10 ? 0 : 2)], [1e4, '万', 1e5, a => (a >= 1e7 ? 0 : 1)]]
+        : [[1e9, 'B', 1e9, a => (a >= 1e11 ? 0 : 2)], [1e6, 'M', 1e6, a => (a >= 1e8 ? 0 : 1)], [1e3, 'K', 1e5, () => 0]]
+      for (let i = 0; i < scales.length; i++) {
+        const [div, suffix, threshold, digits] = scales[i]
+        if (abs < threshold) continue
+        const s = (n / div).toFixed(digits(abs))
+        // Rounding can reach the next unit (999 999 → "1000K"): use the larger unit instead.
+        if (i > 0 && Math.abs(Number(s)) >= scales[i - 1][0] / div) {
+          const [div2, suffix2, , digits2] = scales[i - 1]
+          return `${(n / div2).toFixed(digits2(scales[i - 1][0]))}${suffix2}`
+        }
+        return `${s}${suffix}`
       }
-      if (abs >= 1e8) return `${(n / 1e8).toFixed(abs >= 1e10 ? 0 : 2)}亿`
-      if (abs >= 1e5) return `${(n / 1e4).toFixed(abs >= 1e7 ? 0 : 1)}万`
-      return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      return n.toLocaleString(uiLocale(), { maximumFractionDigits: 2 })
     }
 
     function toCsv(result) {
@@ -112,22 +130,71 @@
      * Async data with request ordering: results of an older request (or of
      * previous deps) never overwrite newer ones, and `loading` is true from the
      * first render after deps change.
+     *
+     * `value` belongs to the current deps: while new deps load it is undefined,
+     * so e.g. a previous data source's data is never shown or acted on.
+     * `reload()` with unchanged deps keeps `value` until the new one arrives.
+     * `scope` (optional) names the deps that identify *whose* data this is; when
+     * only other deps change (a page offset, a filter) the previous value stays
+     * on screen while the next one loads, as long as the scope is unchanged.
      */
-    function useAsync(fn, deps) {
+    function useAsync(fn, deps, scope) {
       const depsKey = JSON.stringify(deps)
-      const [state, setState] = useState({ loading: true, value: undefined, error: undefined, key: null })
+      const scopeKey = scope === undefined ? depsKey : JSON.stringify(scope)
+      const [state, setState] = useState({ loading: true, value: undefined, error: undefined, key: null, scope: null })
       const seq = useRef(0)
       const reload = useCallback(() => {
         const id = ++seq.current
         setState(s => ({ ...s, loading: true, error: undefined }))
         Promise.resolve().then(fn).then(
-          value => { if (seq.current === id) setState({ loading: false, value, error: undefined, key: depsKey }) },
-          error => { if (seq.current === id) setState({ loading: false, value: undefined, error, key: depsKey }) },
+          value => { if (seq.current === id) setState({ loading: false, value, error: undefined, key: depsKey, scope: scopeKey }) },
+          error => { if (seq.current === id) setState({ loading: false, value: undefined, error, key: depsKey, scope: scopeKey }) },
         )
         return () => { if (seq.current === id) seq.current++ }
       }, deps)
       useEffect(reload, [reload])
       const stale = state.key !== depsKey
-      return { ...state, loading: state.loading || stale, stale, reload }
+      const foreign = state.scope !== scopeKey
+      return { loading: state.loading || stale, value: foreign ? undefined : state.value, error: stale ? undefined : state.error, stale, reload }
+    }
+
+    /**
+     * Guard against double submits: `run(fn)` ignores calls while one is in
+     * flight (checked synchronously through a ref, so two clicks in the same
+     * tick still run once) and `busy` re-renders the disabled state.
+     */
+    function useBusy() {
+      const ref = useRef(false)
+      const [busy, setBusy] = useState(false)
+      const alive = useRef(true)
+      useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+      const run = useCallback(async (fn) => {
+        if (ref.current) return undefined
+        ref.current = true
+        setBusy(true)
+        try { return await fn() } finally { ref.current = false; if (alive.current) setBusy(false) }
+      }, [])
+      return [busy, run]
+    }
+
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+    /** Keep Tab / Shift+Tab focus inside the element while `active`. */
+    function useFocusTrap(ref, active = true) {
+      useEffect(() => {
+        const el = ref.current
+        if (!active || !el) return
+        const onKey = (e) => {
+          if (e.key !== 'Tab') return
+          const items = [...el.querySelectorAll(FOCUSABLE)].filter(x => !x.closest('[hidden]') && x.getAttribute('aria-hidden') !== 'true')
+          if (!items.length) { e.preventDefault(); return }
+          const first = items[0]
+          const last = items[items.length - 1]
+          const cur = document.activeElement
+          if (e.shiftKey && (cur === first || !el.contains(cur))) { e.preventDefault(); last.focus() } else if (!e.shiftKey && (cur === last || !el.contains(cur))) { e.preventDefault(); first.focus() }
+        }
+        el.addEventListener('keydown', onKey)
+        return () => el.removeEventListener('keydown', onKey)
+      }, [ref, active, ref.current])
     }
 

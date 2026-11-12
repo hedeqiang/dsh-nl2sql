@@ -32,6 +32,7 @@
       const [value, setValue] = useState('')
       const [err, setErr] = useState(null)
       const box = useRef(null)
+      useFocusTrap(box, Boolean(d))
       useEffect(() => {
         if (!d) return
         setValue(d.value ?? '')
@@ -53,7 +54,7 @@
       return h(React.Fragment, null,
         h('div', { className: 'n2s-toasts', role: 'status', 'aria-live': 'polite' }, st.toasts.map(x => h('div', { key: x.id, className: `n2s-toast ${x.kind}` }, x.kind === 'ok' ? Icon.check(14) : x.kind === 'err' ? Icon.close(13) : null, h('span', null, x.text)))),
         d && ReactDOM.createPortal(h('div', { className: 'n2s-modal-backdrop', onMouseDown: (e) => { if (e.target === e.currentTarget) close(d.kind === 'prompt' ? null : false) } },
-          h('div', { ref: box, className: 'n2s-modal', role: 'alertdialog', 'aria-modal': true, 'aria-labelledby': 'n2s-dlg-title', style: { width: 'min(440px, 100%)' }, onKeyDown: (e) => { if (e.key === 'Escape') close(d.kind === 'prompt' ? null : false); if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') ok() } },
+          h('div', { ref: box, className: 'n2s-modal', role: 'alertdialog', 'aria-modal': true, 'aria-labelledby': 'n2s-dlg-title', style: { width: 'min(440px, 100%)' }, onKeyDown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(d.kind === 'prompt' ? null : false) } if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') ok() } },
             h('div', { id: 'n2s-dlg-title', className: 'n2s-modal-title', style: { marginBottom: 8 } }, d.title),
             d.message && h('div', { className: 'n2s-muted', style: { fontSize: 13.5, marginBottom: 12, whiteSpace: 'pre-wrap' } }, d.message),
             d.kind === 'prompt' && h('input', { className: 'n2s-input', value, placeholder: d.placeholder, 'aria-label': d.title, onChange: e => { setValue(e.target.value); setErr(null) } }),
@@ -63,3 +64,19 @@
               h('button', { type: 'button', className: `n2s-btn ${d.danger ? 'danger-solid' : 'primary'}`, onClick: ok }, d.confirmLabel ?? t('fb2.ok'))))), document.body))
     }
 
+
+    /** Mount the FeedbackLayer once into its own root under document.body; returns the disposer. */
+    function mountFeedbackLayer(ctx) {
+      const el = document.createElement('div')
+      el.className = 'n2s-feedback-root'
+      el.dataset.plugin = PKG
+      document.body.appendChild(el)
+      const root = ReactDOMClient.createRoot(el)
+      function GlobalFeedback() {
+        const t = useMemo(() => ctx.locale.bind(NS), [])
+        setUiLang(useSyncExternalStore(ctx.locale.subscribe.bind(ctx.locale), () => ctx.locale.getSnapshot(), () => ctx.locale.getSnapshot()))
+        return h(FeedbackLayer, { t })
+      }
+      root.render(h(GlobalFeedback))
+      return () => { const d = feedbackStore.get().dialog; feedbackStore.set({ ...feedbackStore.get(), dialog: null }); d?.resolve(d.kind === 'prompt' ? null : false); setTimeout(() => { root.unmount(); el.remove() }, 0) }
+    }

@@ -318,4 +318,18 @@ await test('coerceValue', () => {
   assert.equal(coerceValue(12, 'TEXT'), '12');
 });
 
+test('sheet names: at most 31 UTF-16 units, surrogate pairs never split', () => {
+  const cols = [{ name: 'a', kind: 'text' }];
+  const names = ['😀'.repeat(31), 'a' + '😀'.repeat(20), '😀'.repeat(31), 'X'.repeat(40)];
+  const out = readXlsx(writeXlsx(names.map(name => ({ name, columns: cols, rows: [['1']] })))).map(s => s.name);
+  for (const n of out) {
+    assert.ok(n.length <= 31, `${n} has ${n.length} UTF-16 units`);
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(n), `lone surrogate in ${n}`);
+  }
+  assert.equal(out[0], '😀'.repeat(15));
+  assert.equal(out[1], 'a' + '😀'.repeat(15));
+  assert.equal(out[2], '😀'.repeat(13) + ' (2)');
+  assert.equal(new Set(out.map(n => n.toLowerCase())).size, out.length);
+});
+
 summary('xlsx');

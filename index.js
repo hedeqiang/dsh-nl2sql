@@ -188,7 +188,8 @@ function registerTools(ctx, service) {
         if (!args.datasource) throw new Error('`datasource` is required for action=use')
         const ds = service.requireDatasource(args.datasource)
         service.assertAccess(actor, ds)
-        const info = await service.bindSession(sessionId, ds.id)
+        // The agent tool binds only this session; the page's current data source is left alone.
+        const info = await service.bindSession(sessionId, ds.id, { setCurrent: false })
         return { bound: info.datasourceId, datasources: visible.map(d => pick(d, ['id', 'name', 'type', 'database', 'serverVersion'])) }
       }
       const info = sessionId ? service.sessionInfo(sessionId) : null
@@ -353,7 +354,8 @@ function registerOverviewTool(ctx, service) {
         const ds = service.datasourceForSession(exec.agent?.id, args.datasource)
         service.assertCanWriteSql(service.actorFor(exec.agent?.id), '生成自动概览')
         if (args.pin && service.actorFor(exec.agent?.id)) throw new Error('只有本机用户可以把图表固定到看板')
-        const { table, results } = await service.tableOverview({ datasourceId: ds.id, table: args.table, pin: Boolean(args.pin) })
+        const sessionId = exec.agent?.id
+        const { table, results } = await service.tableOverview({ datasourceId: ds.id, table: args.table, pin: Boolean(args.pin), sessionId, actor: service.actorFor(sessionId), source: 'agent' })
         return {
           model: { table, pinned: Boolean(args.pin), charts: results.map(r => (r.error ? { title: r.title, error: r.error } : { title: r.title, ...service.modelView(r) })) },
           display: { overview: true, table, results: results.map(r => (r.error ? { title: r.title, sql: r.sql, error: r.error } : displayMeta(r))) },

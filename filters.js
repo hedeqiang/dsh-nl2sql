@@ -11,6 +11,8 @@
  * place safely (top-level UNION, no FROM) run unfiltered and report so.
  */
 
+import { lexSql } from './sql-guard.js'
+
 export const TIME_RANGES = ['today', 'yesterday', 'last7d', 'last30d', 'last90d', 'thisMonth', 'lastMonth', 'thisYear', 'custom']
 
 export function normalizeFilters(input) {
@@ -68,50 +70,50 @@ export function describeFilter(f) {
 
 const CLAUSE_END = /^(WHERE|GROUP|HAVING|ORDER|LIMIT|WINDOW|QUALIFY|FETCH|OFFSET|UNION|INTERSECT|EXCEPT|FOR|PIVOT)$/i
 
-/** Top-level (depth 0) word tokens of the outermost SELECT, with offsets. */
-function topLevelWords(sql) {
+/**
+ * Top-level (depth 0) word tokens of the outermost SELECT, with offsets.
+ * Tokenised with the dialect-exact lexer from sql-guard.js, so comments,
+ * strings and quoted identifiers are recognised exactly as the server does
+ * (e.g. MySQL `1--1` is code, not a comment).
+ */
+function topLevelWords(sql, dialect = 'mysql') {
   const words = []
   let depth = 0
-  for (let i = 0; i < sql.length;) {
-    const c = sql[i]
-    const n = sql[i + 1]
-    if ((c === '-' && n === '-') || c === '#') { while (i < sql.length && sql[i] !== '\n') i++; continue }
-    if (c === '/' && n === '*') { const e = sql.indexOf('*/', i + 2); i = e < 0 ? sql.length : e + 2; continue }
-    if (c === '\'' || c === '"' || c === '`') {
-      const q = c
-      const start = i
-      i++
-      while (i < sql.length) {
-        if (sql[i] === '\\' && q === '\'') { i += 2; continue }
-        if (sql[i] === q) { if (sql[i + 1] === q) { i += 2; continue } break }
-        i++
+  const { segments } = lexSql(sql, { dialect })
+  for (const seg of segments) {
+    if (seg.kind === 'comment') continue
+    if (seg.kind === 'string' || seg.kind === 'ident') {
+      if (depth === 0) words.push({ kind: 'quoted', text: seg.text, start: seg.start, end: seg.end })
+      continue
+    }
+    const text = seg.text
+    for (let k = 0; k < text.length;) {
+      const c = text[k]
+      const i = seg.start + k
+      if (c === '(') { depth++; if (depth === 1) words.push({ kind: 'open', start: i, end: i + 1 }); k++; continue }
+      if (c === ')') { depth--; if (depth === 0) words.push({ kind: 'close', start: i, end: i + 1 }); k++; continue }
+      if (/[A-Za-z_]/.test(c)) {
+        let j = k
+        while (j < text.length && /[\w$.\-*]/.test(text[j]) && !(text[j] === '-' && text[j + 1] === '-')) j++
+        if (depth === 0) words.push({ kind: 'word', text: text.slice(k, j), upper: text.slice(k, j).toUpperCase(), start: i, end: seg.start + j })
+        k = j
+        continue
       }
-      i++
-      if (depth === 0) words.push({ kind: 'quoted', text: sql.slice(start, i), start, end: i })
-      continue
+      if (c === ',' && depth === 0) words.push({ kind: 'comma', start: i, end: i + 1 })
+      k++
     }
-    if (c === '(') { depth++; if (depth === 1) words.push({ kind: 'open', start: i, end: i + 1 }); i++; continue }
-    if (c === ')') { depth--; if (depth === 0) words.push({ kind: 'close', start: i, end: i + 1 }); i++; continue }
-    if (/[A-Za-z_]/.test(c)) {
-      let j = i
-      while (j < sql.length && /[\w$.\-*]/.test(sql[j]) && !(sql[j] === '-' && sql[j + 1] === '-')) j++
-      if (depth === 0) words.push({ kind: 'word', text: sql.slice(i, j), upper: sql.slice(i, j).toUpperCase(), start: i, end: j })
-      i = j
-      continue
-    }
-    if (c === ',' && depth === 0) words.push({ kind: 'comma', start: i, end: i + 1 })
-    i++
   }
   return words
 }
 
 function unquote(t) {
+  if (t.startsWith('[') && t.endsWith(']')) return t.slice(1, -1)
   return t.replace(/^[`"]|[`"]$/g, '').replace(/``/g, '`').replace(/""/g, '"')
 }
 
 /** Parse the outermost query: FROM items with aliases, WHERE span, insertion point. */
-export function parseOuterQuery(sql) {
-  const words = topLevelWords(sql)
+export function parseOuterQuery(sql, { dialect = 'mysql' } = {}) {
+  const words = topLevelWords(sql, dialect)
   // Skip a leading WITH ... list: the main SELECT is the first top-level SELECT after the CTE bodies.
   let selectIdx = words.findIndex(w => w.kind === 'word' && w.upper === 'SELECT')
   if (words[0]?.upper === 'WITH') {
@@ -190,7 +192,7 @@ function literalFor(value, dialect) {
  */
 export function applyFilters(sql, filters, { dialect, schema, now }) {
   if (!filters.length) return { sql, applied: [], skipped: [] }
-  const outer = parseOuterQuery(sql)
+  const outer = parseOuterQuery(sql, { dialect })
   if (!outer || !outer.tables.length) return { sql, applied: [], skipped: filters.map(f => ({ ...f, reason: 'unsupported query shape' })) }
   const tables = schema?.tables ?? []
   const resolve = (ref) => {
@@ -224,14 +226,66 @@ export function applyFilters(sql, filters, { dialect, schema, now }) {
   }
   if (!predicates.length) return { sql, applied, skipped }
   const pred = predicates.join(' AND ')
+  // A trailing line comment would swallow whatever follows on the same line: break the line first.
+  const nl = (text) => (endsInLineComment(text, dialect) ? '\n' : '')
   let out
   if (outer.where) {
+    const head = sql.slice(0, outer.where.keywordStart)
     const existing = sql.slice(outer.where.keywordEnd, outer.where.end).trim()
-    out = `${sql.slice(0, outer.where.keywordStart)}WHERE (${pred}) AND (${existing})${outer.where.end < sql.length ? ' ' : ''}${sql.slice(outer.where.end)}`
+    out = `${head}${nl(head)}WHERE (${pred}) AND (${existing}${nl(existing)})${outer.where.end < sql.length ? ' ' : ''}${sql.slice(outer.where.end)}`
   } else {
     const before = sql.slice(0, outer.insertAt).replace(/\s+$/, '')
     const after = sql.slice(outer.insertAt)
-    out = `${before} WHERE ${pred}${after ? ` ${after}` : ''}`
+    out = `${before}${nl(before) || ' '}WHERE ${pred}${after ? ` ${after}` : ''}`
   }
+  verifyInjection(out, pred, Boolean(outer.where), outer.tables, dialect)
   return { sql: out, applied, skipped }
+}
+
+/** Raised when an injected predicate would not be a top-level conjunct of the rewritten query. */
+export class FilterInjectionError extends Error {
+  constructor(message) {
+    super(message)
+    this.code = 'nl2sql/filter-injection'
+  }
+}
+
+function endsInLineComment(text, dialect) {
+  const segs = lexSql(text, { dialect }).segments
+  const last = segs[segs.length - 1]
+  return Boolean(last && last.kind === 'comment' && last.end === text.length && !last.text.startsWith('/*'))
+}
+
+const tokenSig = (w) => (w.kind === 'word' ? `w:${w.upper}` : w.kind === 'quoted' ? `q:${w.text}` : w.kind)
+
+/**
+ * Defence in depth: re-lex the rewritten SQL with the dialect lexer and make
+ * sure the injected predicate is a top-level conjunct of the outer WHERE —
+ * balanced parentheses, the same FROM items, and a WHERE body made of exactly
+ * `(pred) AND (existing)` or exactly `pred`. Anything else (a stray `)`, a
+ * top-level OR next to the predicate, a comment swallowing it) is refused.
+ */
+function verifyInjection(out, pred, hadWhere, tables, dialect) {
+  const fail = () => { throw new FilterInjectionError('filter predicate could not be injected as a top-level condition; query refused') }
+  const lexed = lexSql(out, { dialect })
+  if (lexed.unterminated) fail()
+  let depth = 0
+  for (const seg of lexed.segments) {
+    if (seg.kind !== 'code') continue
+    for (const c of seg.text) {
+      if (c === '(') depth++
+      else if (c === ')' && --depth < 0) fail()
+    }
+  }
+  if (depth !== 0) fail()
+  const outer = parseOuterQuery(out, { dialect })
+  if (!outer?.where) fail()
+  const sameTables = outer.tables.length === tables.length && outer.tables.every((t, k) => t.name === tables[k].name && t.alias === tables[k].alias)
+  if (!sameTables) fail()
+  const body = topLevelWords(out, dialect).filter(w => w.start >= outer.where.keywordEnd && w.start < outer.where.end).map(tokenSig)
+  const expected = hadWhere ? ['open', 'close', 'w:AND', 'open', 'close'] : topLevelWords(pred, dialect).map(tokenSig)
+  if (body.length !== expected.length || body.some((t, k) => t !== expected[k])) fail()
+  // The predicate text must sit right after WHERE (inside the first parenthesis when ANDed with an existing condition).
+  const at = out.slice(outer.where.keywordEnd).replace(/^\s+/, '')
+  if (!at.startsWith(hadWhere ? `(${pred})` : pred)) fail()
 }

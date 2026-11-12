@@ -46,6 +46,6 @@
           h('span', { className: 'n2s-wf-bar' }, h('span', { className: `n2s-wf-fill ${it.delta > 0 ? 'up' : it.delta < 0 ? 'down' : ''}`, style: { width: `${Math.max(2, Math.abs(it.delta) / max * 100)}%` } })),
           h('span', { className: 'n2s-wf-num' }, `${it.delta >= 0 ? '+' : ''}${formatCompact(it.delta)}`),
           h('span', { className: 'n2s-wf-share n2s-faint' }, it.share === null || Math.abs(it.share) > 3 ? '' : `${Math.round(it.share * 100)}%`)))),
-        why.dimensions.filter(d => !d.attribution).length > 0 && h('div', { className: 'n2s-faint n2s-small' }, `${colon(t('drill.failedDims'))}${why.dimensions.filter(d => !d.attribution).map(d => d.dimension).join(uiLang === 'zh' ? '、' : ', ')}`))
+        why.dimensions.filter(d => !d.attribution).length > 0 && h('div', { className: 'n2s-faint n2s-small' }, `${colon(t('drill.failedDims'))}${why.dimensions.filter(d => !d.attribution).map(d => d.dimension).join(listSep())}`))
     }
 

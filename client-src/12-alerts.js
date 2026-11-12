@@ -2,17 +2,25 @@
 
     function AlertForm({ t, initial, datasources, ds, onDone, onCancel }) {
       const channels = useChannels()
-      const [form, setForm] = useState(() => ({ name: '', datasourceId: ds?.id, source: 'metric', metric: '', grain: 'day', sql: '', every: 'hour', at: '09:00', cooldownMin: 60, channelId: channels.find(c => c.isDefault)?.id ?? '', mention: false, enabled: true, ...(initial ?? {}), condition: { type: 'change', direction: 'any', pct: 20, ...(initial?.condition ?? {}) } }))
+      const [form, setForm] = useState(() => ({ name: '', datasourceId: ds?.id, source: 'metric', metric: '', grain: 'day', sql: '', every: 'hour', at: '09:00', cooldownMin: 60, channelId: initial ? '' : (channels.find(c => c.isDefault)?.id ?? ''), mention: false, enabled: true, ...(initial ?? {}), condition: { type: 'change', direction: 'any', pct: 20, ...(initial?.condition ?? {}) } }))
       const k = useAsync(() => (form.datasourceId ? call('getKnowledge', { datasourceId: form.datasourceId }) : null), [form.datasourceId])
       const [error, setError] = useState(null)
       const [test, setTest] = useState(null)
+      const [busy, runBusy] = useBusy()
+      // Channels may load after the form opens: adopt the default once, unless the user already chose.
+      const channelTouched = useRef(Boolean(initial) || Boolean(form.channelId))
+      useEffect(() => {
+        if (channelTouched.current) return
+        const def = channels.find(c => c.isDefault)
+        if (def) { channelTouched.current = true; setForm(f => ({ ...f, channelId: def.id })) }
+      }, [channels])
       const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
       const setC = (patch) => setForm(f => ({ ...f, condition: { ...f.condition, ...patch } }))
       const metrics = k.value?.metrics ?? []
-      const save = async () => {
+      const save = () => runBusy(async () => {
         setError(null)
         try { await call('saveAlert', { ...form, cooldownMin: Number(form.cooldownMin) }); onDone() } catch (e) { setError(e.message) }
-      }
+      })
       const tryIt = async () => {
         if (test?.busy) return
         setTest({ busy: true })
@@ -41,24 +49,24 @@
             h('span', { className: 'n2s-faint n2s-small' }, t(`al.condHint.${c.type}`))),
           h('label', { className: 'n2s-field' }, h('span', null, t('al.every')), h('select', { className: 'n2s-select', value: form.every, onChange: set('every') }, ['15m', 'hour', 'day'].map(v => h('option', { key: v, value: v }, t(`al.every.${v}`))))),
           form.every === 'day' ? h('label', { className: 'n2s-field' }, h('span', null, t('rep.time')), h('input', { className: 'n2s-input', type: 'time', value: form.at, onChange: set('at') })) : h('label', { className: 'n2s-field' }, h('span', null, t('al.cooldown')), h('input', { className: 'n2s-input', type: 'number', value: form.cooldownMin, onChange: set('cooldownMin') })),
-          h('div', { className: 'n2s-field' }, h('label', { htmlFor: 'n2s-al-channel', className: 'n2s-flabel' }, t('rep.push')), h(ChannelPicker, { t, id: 'n2s-al-channel', value: form.channelId ?? '', noneLabel: t('al.noPush'), onChange: (v) => setForm(f => ({ ...f, channelId: v })) })),
+          h('div', { className: 'n2s-field' }, h('label', { htmlFor: 'n2s-al-channel', className: 'n2s-flabel' }, t('rep.push')), h(ChannelPicker, { t, id: 'n2s-al-channel', value: form.channelId ?? '', noneLabel: t('al.noPush'), onChange: (v) => { channelTouched.current = true; setForm(f => ({ ...f, channelId: v })) } })),
           h('label', { className: 'n2s-check', style: { alignSelf: 'end' } }, h('input', { type: 'checkbox', checked: form.mention, onChange: set('mention') }), t('al.mentionAll'))),
-        test && h('div', { className: `n2s-notice ${test.error ? 'err' : test.triggered ? 'warn' : 'ok'}`, style: { marginTop: 10 } }, test.busy ? t('ds.testing') : test.error ?? `${test.triggered ? t('al.wouldFire') : t('al.wouldNotFire')}：${test.message}`),
+        test && h('div', { className: `n2s-notice ${test.error ? 'err' : test.triggered ? 'warn' : 'ok'}`, style: { marginTop: 10 } }, test.busy ? t('ds.testing') : test.error ?? `${colon(test.triggered ? t('al.wouldFire') : t('al.wouldNotFire'))}${test.message}`),
         error && h('div', { className: 'n2s-notice err', style: { marginTop: 10 } }, error),
         h('div', { className: 'n2s-row', style: { marginTop: 12, justifyContent: 'flex-end' } },
           h('button', { type: 'button', className: 'n2s-btn ghost', onClick: onCancel }, t('ds.cancel')),
           h('button', { type: 'button', className: 'n2s-btn', disabled: test?.busy, onClick: tryIt }, t('al.test')),
-          h('button', { type: 'button', className: 'n2s-btn primary', onClick: save }, t('ds.save'))))
+          h('button', { type: 'button', className: 'n2s-btn primary', disabled: busy, onClick: save }, busy ? h('span', { className: 'n2s-spin' }) : null, t('ds.save'))))
     }
 
     function AlertsTab({ t, ds, datasources }) {
       const list = useAsync(() => call('listAlerts'), [])
-      const events = useAsync(() => call('listAlertEvents', {}), [list.value])
+      const events = useAsync(() => call('listAlertEvents', {}), [list.value], [])
       const [editing, setEditing] = useState(null)
       const [notice, setNotice] = useState(null)
       const act = async (fn, ok) => { setNotice(null); try { const r = await fn(); if (ok) setNotice({ ok: true, text: typeof ok === 'function' ? ok(r) : ok }) } catch (e) { setNotice({ ok: false, text: e.message }) } list.reload() }
       const alerts = list.value ?? []
-      const sched = useAsync(() => call('schedulerStatus'), [list.value])
+      const sched = useAsync(() => call('schedulerStatus'), [list.value], [])
       const condText = (a) => a.condition.type === 'threshold' ? `${a.condition.op} ${a.condition.value}` : a.condition.type === 'change' ? `${t(`al.dir.${a.condition.direction ?? 'any'}`)} ≥ ${a.condition.pct}%` : a.condition.type === 'anomaly' ? `Z ≥ ${a.condition.z ?? 3}` : t('al.cond.missing')
       return h('div', null,
         h(SectionHead, { title: t('tab.alerts'), desc: t('al.hint') }, h('button', { type: 'button', className: 'n2s-btn primary', disabled: !ds, onClick: () => setEditing({}) }, '+ ', t('al.add'))),

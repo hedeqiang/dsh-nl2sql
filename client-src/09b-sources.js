@@ -1,10 +1,10 @@
     function FileTables({ t, ds }) {
-      const list = useAsync(() => call('listFileTables', { datasourceId: ds.id }), [ds.id, ds.schemaAnalyzedAt])
+      const list = useAsync(() => call('listFileTables', { datasourceId: ds.id }), [ds.id, ds.schemaAnalyzedAt], [ds.id])
       const tables = list.value ?? []
       if (!tables.length) return null
       return h('div', { className: 'n2s-chips', style: { marginTop: 6 } }, tables.map(tb => h('span', { key: tb.name, className: 'n2s-badge', title: `${tb.source ?? ''} · ${new Date(tb.updatedAt ?? tb.createdAt).toLocaleString()}` },
         `${tb.name} · ${formatCompact(tb.rows)}`,
-        h('button', { type: 'button', className: 'n2s-iconbtn', style: { width: 16, height: 16 }, 'aria-label': `${t('ds.delete')} ${tb.name}`, onClick: async () => { if (await confirmDialog({ title: fmt(t, 'up.dropConfirm', { name: tb.name }), danger: true })) { await call('dropFileTable', { datasourceId: ds.id, table: tb.name }); list.reload(); refreshDatasources() } } }, Icon.close(10)))))
+        h('button', { type: 'button', className: 'n2s-iconbtn', style: { width: 16, height: 16 }, 'aria-label': `${t('ds.delete')} ${tb.name}`, onClick: async () => { if (await confirmDialog({ title: fmt(t, 'up.dropConfirm', { name: tb.name }), danger: true })) { try { await call('dropFileTable', { datasourceId: ds.id, table: tb.name }) } catch (e) { notifyError(e) } list.reload(); refreshDatasources() } } }, Icon.close(10)))))
     }
 
     function SourcesTab({ t, datasources }) {
@@ -51,7 +51,7 @@
             h('div', { className: 'n2s-row', style: { gap: 2, flexWrap: 'nowrap' } },
               h('button', { type: 'button', className: 'n2s-btn small', disabled: tr?.busy, onClick: () => test(ds) }, tr?.busy ? h('span', { className: 'n2s-spin' }) : null, t('ds.test')),
               h(Dropdown, { label: t('result.more'), trigger: { content: Icon.more() }, items: [
-                !ds.current && { label: t('ds.setCurrent'), icon: Icon.check(14), onClick: async () => { await call('setCurrent', { id: ds.id }); refreshDatasources() } },
+                !ds.current && { label: t('ds.setCurrent'), icon: Icon.check(14), onClick: async () => { try { await call('setCurrent', { id: ds.id }) } catch (e) { notifyError(e) } refreshDatasources() } },
                 ds.type === 'sqlite' && { label: t('up.addFile'), icon: Icon.up(14), onClick: () => setUpload({ target: ds.id }) },
                 ds.type !== 'sqlite' && { label: t('ds.edit'), icon: Icon.edit(14), onClick: () => setEditing(ds) },
                 { label: t('policy.button'), icon: svg(14, [h('rect', { key: 1, x: 3.5, y: 7, width: 9, height: 6.5, rx: 1.4 }), h('path', { key: 2, d: 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' })]), onClick: () => setPolicyFor(ds) },

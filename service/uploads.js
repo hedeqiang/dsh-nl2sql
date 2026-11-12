@@ -202,8 +202,11 @@ export const methods = {
       fileName = fileName || staged.fileName
       raw = staged.raw
     }
+    fileName = String(fileName ?? '').trim().slice(0, 255)
+    if (!raw && !fileName) throw new UserError('nl2sql/invalid', '缺少文件名')
     let ds = datasourceId ? this.requireDatasource(datasourceId) : undefined
-    if (!ds) ds = await this.saveDatasource({ type: 'sqlite', name: newName || String(fileName ?? '本地文件').replace(/\.[^.]+$/, '').slice(0, 60), description: `上传的文件：${fileName}` })
+    // The description is left empty for the user to fill in (it is shown to the model and in bot catalogs).
+    if (!ds) ds = await this.saveDatasource({ type: 'sqlite', name: newName || (fileName || 'uploaded-file').replace(/\.[^.]+$/, '').slice(0, 60) })
     if (ds.type !== 'sqlite') throw new UserError('nl2sql/invalid', '只能导入到「本地文件」类型的数据源')
     const ds2 = this.requireDatasource(ds.id)
     if (!raw) {

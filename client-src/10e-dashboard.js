@@ -80,7 +80,12 @@
       useEffect(() => { if (!saved.loading && saved.value) { setFilters(saved.value); setFiltersFor(boardId) } }, [saved.value, saved.loading, boardId])
       const filtersReady = filters !== null && filtersFor === boardId
       const [sendingDash, setSendingDash] = useState(false)
-      const changeFilters = (next) => { setFilters(next); call('saveDashboardFilters', { filters: next }).catch(() => {}) }
+      // Saves are serialized so an older save can never land after a newer one.
+      const saveChain = useRef(Promise.resolve())
+      const changeFilters = (next) => {
+        setFilters(next)
+        saveChain.current = saveChain.current.then(() => call('saveDashboardFilters', { filters: next })).catch((e) => notifyError(e))
+      }
       const otherBoards = (boards.value?.dashboards ?? []).filter(d => d.id !== boards.value?.current)
       // Per-widget load status → header summary ("updated 10:42 · 2 from cache").
       const [loads, setLoads] = useState({})
@@ -143,7 +148,7 @@
               h('div', { className: 'n2s-h2', style: { margin: 0 } }, fmt(t, 'dash.count', { count: widgets.length })),
               (mixed || hiddenByScope > 0 || (ds && sourceIds.some(id => id !== ds.id))) && h('div', { className: 'n2s-seg small', role: 'group', 'aria-label': t('dash.scope') },
                 ['all', 'current'].map(v => h('button', { key: v, type: 'button', 'aria-pressed': scope === v, disabled: v === 'current' && !ds, onClick: () => setScope(v) }, v === 'all' ? t('dash.scopeAll') : fmt(t, 'dash.scopeCurrent', { name: ds?.name ?? '' }))))),
-            showSource && h('div', { className: 'n2s-faint n2s-small' }, fmt(t, 'dash.sources', { list: sourceIds.map(id => dsById.get(id)?.name ?? t('dash.sourceMissingShort')).join(uiLang === 'zh' ? '、' : ', ') })),
+            showSource && h('div', { className: 'n2s-faint n2s-small' }, fmt(t, 'dash.sources', { list: joinList(sourceIds.map(id => dsById.get(id)?.name ?? t('dash.sourceMissingShort'))) })),
             h('div', { className: 'n2s-faint n2s-small', role: 'status', 'aria-live': 'polite' },
               loadingN > 0 ? fmt(t, 'dash.loadingN', { n: loadingN }) : lastAt ? fmt(t, 'dash.lastRefresh', { time: new Date(lastAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }) : '',
               cachedN > 0 && loadingN === 0 ? h('span', null, ' · ', h('button', { type: 'button', className: 'n2s-link', title: t('dash.cachedHint'), onClick: () => setTick(x => x + 1) }, fmt(t, 'dash.cachedN', { n: cachedN }))) : null,
@@ -164,7 +169,7 @@
         !list.loading && allWidgets.length === 0 && h('div', { className: 'n2s-empty' }, h('h3', null, t('dash.empty')), h('div', null, t('dash.emptyHint')), h('button', { type: 'button', className: 'n2s-btn', onClick: () => fbCtx.navigate?.({ tab: 'ask' }) }, t('dash.goAsk'))),
         widgets.length > 1 && h('div', { className: 'n2s-faint n2s-small n2s-hide-narrow', style: { margin: '-4px 0 8px' } }, t('dash.dragTip')),
         filtersReady && !list.loading && h('div', { className: `n2s-dash${dragId ? ' is-dragging' : ''}`, key: `d:${boardId ?? 'b'}` }, widgets.map((w, i) => h(DashboardWidget, {
-          key: w.id, t, widget: w, tick, first: i === 0, last: i === widgets.length - 1, filters: filters ?? [], filterCount: (filters ?? []).length,
+          key: w.id, t, widget: w, tick, first: i === 0, last: i === widgets.length - 1, filters: filters ?? [], filterCount: (filters ?? []).filter(f => f.kind !== 'in' || f.values.length > 0).length,
           onChanged: () => list.reload(), onLoaded, drag: dragProps(w), source: dsById.get(w.datasourceId), showSource,
           onMove: (delta) => move(w, delta),
           onRemove: async () => { if (!await confirmDialog({ title: fmt(t, 'dash.removeConfirm', { title: w.title }), danger: true })) return; try { await call('unpinWidget', { id: w.id }); notify(t('dash.removed'), 'ok') } catch (e) { notifyError(e) } list.reload() },

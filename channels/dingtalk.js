@@ -48,7 +48,7 @@
  */
 import { createHmac } from 'node:crypto'
 import { ChannelError, postJson, request } from './http.js'
-import { resultMeta, isKpi, kpiText, fmtNum, cellText, toPlainMarkdown, mentionsAll, splitText, MD_TABLE, parseMdTable } from './message.js'
+import { resultMeta, isKpi, kpiText, fmtNum, cellText, defangMd, toPlainMarkdown, mentionsAll, splitText, MD_TABLE, parseMdTable } from './message.js'
 
 export const OAPI = 'https://oapi.dingtalk.com'
 export const API = 'https://api.dingtalk.com'
@@ -153,11 +153,12 @@ export function dingApiError(json, status) {
 // ------------------------------------------------------------- rendering
 
 /** A result as text lines (DingTalk markdown has no tables). */
-export function resultAsDingText(r, maxRows = 10, maxCols = 6) {
+export function resultAsDingText(r, maxRows = 10, maxCols = 6, { escape = defangMd } = {}) {
   const cols = r.columns.slice(0, maxCols)
   const rows = r.rows.slice(0, maxRows)
-  const cell = (c, v) => (c.kind === 'number' ? fmtNum(v) : cellText(v, 30)).replace(/\|/g, '｜')
-  const out = [`**${cols.map(c => c.name).join(' ｜ ')}**`, '', ...rows.map((row, i) => `${i + 1}. ${cols.map((c, j) => cell(c, row[j])).join(' ｜ ')}`)]
+  // NULL → '—' (not 0); line breaks would split a numbered row; data must not form links / tags.
+  const cell = (c, v) => escape((c.kind === 'number' ? fmtNum(v) : cellText(v, 30)) || '—').replace(/\|/g, '｜')
+  const out = [`**${cols.map(c => escape(c.name)).join(' ｜ ')}**`, '', ...rows.map((row, i) => `${i + 1}. ${cols.map((c, j) => cell(c, row[j])).join(' ｜ ')}`)]
   const total = r.rowCount ?? r.rows.length
   if (total > rows.length) out.push('', `> 共 ${total} 行，仅显示前 ${rows.length} 行；完整数据可在数据问答页面查看或导出 Excel`)
   return out.join('\n')
@@ -167,7 +168,8 @@ export function resultAsDingText(r, maxRows = 10, maxCols = 6) {
 export function stripTables(md) {
   return String(md ?? '').replace(MD_TABLE, (m, lead, block) => {
     const t = parseMdTable(block)
-    return `${lead}${resultAsDingText({ ...t, rowCount: t.rows.length }, 50, 8)}\n`
+    // Tables authored in the message text keep their Markdown (links etc.).
+    return `${lead}${resultAsDingText({ ...t, rowCount: t.rows.length }, 50, 8, { escape: (x) => String(x ?? '') })}\n`
   })
 }
 
@@ -179,18 +181,18 @@ export function toDingMarkdown(md) {
 /** OutboundMessage → { title, text } for msgtype markdown / sampleMarkdown. */
 export function renderMarkdown(message, { maxRows = 10 } = {}) {
   const parts = []
-  if (message.title) parts.push(`### ${message.title}`)
+  if (message.title) parts.push(`### ${defangMd(message.title)}`)
   if (message.text) parts.push(toDingMarkdown(message.text))
   for (const r of (message.results ?? []).slice(0, 10)) {
-    const lines = [`#### ${r.title || '查询结果'}`, `> ${resultMeta(r)}`, '']
-    if (r.error) lines.push(r.error)
+    const lines = [`#### ${defangMd(r.title || '查询结果')}`, `> ${resultMeta(r)}`, '']
+    if (r.error) lines.push(defangMd(r.error))
     else if (!r.rows?.length) lines.push('无数据')
     else if (isKpi(r)) lines.push(kpiText(r, { separator: '\n\n' }))
     else lines.push(resultAsDingText(r, maxRows))
     if (r.sql && message.includeSql) lines.push('', '```sql\n' + r.sql.slice(0, 1500) + '\n```')
     parts.push(lines.join('\n'))
   }
-  if (message.footer) parts.push(toDingMarkdown(message.footer))
+  if (message.footer) parts.push(defangMd(toDingMarkdown(message.footer)))
   const all = message.mentionAll || mentionsAll(message.text) || mentionsAll(message.footer)
   if (all && !parts.some(p => p.includes('@所有人'))) parts.push('@所有人')
   const title = String(message.title || '数据问答').slice(0, 60)

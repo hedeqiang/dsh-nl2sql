@@ -75,7 +75,7 @@
           h('span', { className: 'n2s-tile', 'aria-hidden': true }, svg(16, [h('circle', { key: 1, cx: 8, cy: 8, r: 5.5 }), h('path', { key: 2, d: 'M8 5v3.2l2 1.3' })])),
           h('div', { className: 'n2s-grow', style: { minWidth: 0 } },
             h('div', { className: 'n2s-row', style: { gap: 6 } }, h('span', { className: 'n2s-list2-title' }, r.title), r.channelName && h('span', { className: 'n2s-badge' }, Icon.send(11), r.channelName)),
-            h('div', { className: 'n2s-list2-sub' }, `${t(`rep.period.${r.period}`)} ${r.period === 'weekly' ? r.weekdays.map(d => t(`rep.wd.${d}`)).join(uiLang === 'zh' ? '、' : ', ') + ' ' : ''}${r.time.slice(0, 5)} · ${r.datasourceName} · ${r.scope === 'question' ? r.question : t('rep.scope.dashboard')}`)),
+            h('div', { className: 'n2s-list2-sub' }, `${t(`rep.period.${r.period}`)} ${r.period === 'weekly' ? r.weekdays.map(d => t(`rep.wd.${d}`)).join(listSep()) + ' ' : ''}${r.time.slice(0, 5)} · ${r.datasourceName} · ${r.scope === 'question' ? r.question : t('rep.scope.dashboard')}`)),
           h('div', { className: 'n2s-list2-side' },
             statusDot(r.status),
             h('span', { className: 'n2s-faint n2s-small' }, r.scheduledAt && r.status === 'active' ? `${t('rep.next')} ${new Date(r.scheduledAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '')),

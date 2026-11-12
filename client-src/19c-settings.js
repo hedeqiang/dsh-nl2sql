@@ -85,7 +85,7 @@
           form.resultToModel === 'rows' && h(SettingRow, { label: t('settings.modelRows'), hint: t('set.h.modelRows'), changed: changed('modelRows'), htmlFor: 'set-modelRows' }, num('modelRows', { min: 0, max: 500 })),
           h(SettingRow, { label: t('set.l.mask'), hint: t('set.h.maskSensitive'), changed: changed('maskSensitive') }, h('label', { className: 'n2s-switch' }, h('input', { type: 'checkbox', role: 'switch', checked: Boolean(form.maskSensitive), onChange: e => set('maskSensitive', e.target.checked) }), h('span', null, form.maskSensitive ? t('set.on') : t('set.off')))),
           h('div', { className: 'n2s-setnote' }, overrides.length
-            ? h(React.Fragment, null, t('set.overrides'), ' ', overrides.map((d, i) => h(React.Fragment, { key: d.id }, i > 0 && '、', h('button', { type: 'button', className: 'n2s-link', onClick: () => onNavigate({ section: 'sources' }) }, d.name))))
+            ? h(React.Fragment, null, t('set.overrides'), ' ', overrides.map((d, i) => h(React.Fragment, { key: d.id }, i > 0 && listSep(), h('button', { type: 'button', className: 'n2s-link', onClick: () => onNavigate({ section: 'sources' }) }, d.name))))
             : t('set.noOverrides'))) :
         group === 'query' ? h(React.Fragment, null,
           h(SettingRow, { label: t('set.l.maxRows'), hint: t('set.h.maxRows'), changed: changed('maxRows'), htmlFor: 'set-maxRows' }, num('maxRows', { min: 1, max: 100000 })),
@@ -189,6 +189,17 @@
       const retention = form.retention ?? defaults.retention ?? {}
       const fileRef = useRef(null)
       const [importState, setImportState] = useState(null)
+      const importBox = useRef(null)
+      useFocusTrap(importBox, Boolean(importState))
+      const [importing, runImport] = useBusy()
+      useEffect(() => {
+        if (!importState) return
+        const prev = document.activeElement
+        setTimeout(() => importBox.current?.querySelector('button.primary')?.focus(), 0)
+        const onKey = (e) => { if (e.key === 'Escape' && !feedbackStore.get().dialog) setImportState(null) }
+        document.addEventListener('keydown', onKey)
+        return () => { document.removeEventListener('keydown', onKey); prev?.focus?.() }
+      }, [Boolean(importState)])
       const exportAll = async () => {
         try {
           const doc = await call('exportConfig')
@@ -206,7 +217,7 @@
           setImportState({ doc, dry })
         } catch (err) { notifyError(err) }
       }
-      const doImport = async (mode) => {
+      const doImport = (mode) => runImport(async () => {
         if (mode === 'replace' && !await confirmDialog({ title: t('set.importReplaceConfirm'), message: t('set.importReplaceMsg'), danger: true })) return
         try {
           const r = await call('importConfig', { data: importState.doc, mode })
@@ -216,7 +227,7 @@
           const needs = (r.report?.datasources?.needsSecret ?? r.needsSecret ?? []).length
           notify(needs ? fmt(t, 'set.importedNeedsSecret', { n: needs }) : t('set.imported'), 'ok', 6000)
         } catch (err) { notifyError(err) }
-      }
+      })
       const purge = async (kind) => {
         if (!await confirmDialog({ title: fmt(t, 'set.purgeConfirm', { kind: t(`set.rk.${kind}`) }), danger: true })) return
         try { await call('purgeRecords', { kind }); st.reload(); notify(t('set.purged'), 'ok') } catch (e) { notifyError(e) }
@@ -242,17 +253,17 @@
           h('button', { type: 'button', className: 'n2s-btn', onClick: () => fileRef.current?.click() }, Icon.up(13), t('set.import')),
           h('input', { ref: fileRef, type: 'file', accept: 'application/json,.json', style: { display: 'none' }, onChange: onFile })),
         importState && ReactDOM.createPortal(h('div', { className: 'n2s-modal-backdrop', onMouseDown: (e) => { if (e.target === e.currentTarget) setImportState(null) } },
-          h('div', { className: 'n2s-modal', role: 'dialog', 'aria-modal': true, 'aria-label': t('set.import'), onKeyDown: (e) => { if (e.key === 'Escape') setImportState(null) } },
+          h('div', { ref: importBox, className: 'n2s-modal', role: 'dialog', 'aria-modal': true, 'aria-label': t('set.import') },
             h('div', { className: 'n2s-modal-title', style: { marginBottom: 10 } }, t('set.import')),
             h('div', { className: 'n2s-muted n2s-small', style: { marginBottom: 10 } }, fmt(t, 'set.importFrom', { time: importState.doc.exportedAt ? new Date(importState.doc.exportedAt).toLocaleString() : '?' })),
             h('table', { className: 'n2s-table' }, h('thead', null, h('tr', null, [t('set.section'), t('set.toAdd'), t('set.toUpdate'), t('set.note')].map((x, i) => h('th', { key: i }, x)))),
               h('tbody', null, Object.entries(importState.dry?.report ?? {}).map(([k, r]) => h('tr', { key: k },
                 h('td', null, t(`set.sec.${k}`)), h('td', null, r.add ?? r.added ?? 0), h('td', null, r.update ?? r.updated ?? 0),
-                h('td', { className: 'n2s-muted n2s-small', style: { whiteSpace: 'normal' } }, [r.needsSecret?.length ? fmt(t, 'set.needsSecret', { names: r.needsSecret.join(uiLang === 'zh' ? '、' : ', ') }) : '', r.paused ? t('set.reportsPaused') : '', r.skipped ? fmt(t, 'set.skipped', { n: r.skipped }) : ''].filter(Boolean).join('；')))))),
+                h('td', { className: 'n2s-muted n2s-small', style: { whiteSpace: 'normal' } }, joinClauses([r.needsSecret?.length ? fmt(t, 'set.needsSecret', { names: joinList(r.needsSecret) }) : '', r.paused ? t('set.reportsPaused') : '', r.skipped ? fmt(t, 'set.skipped', { n: r.skipped }) : ''])))))),
             h('div', { className: 'n2s-row', style: { marginTop: 14, justifyContent: 'flex-end' } },
               h('button', { type: 'button', className: 'n2s-btn ghost', onClick: () => setImportState(null) }, t('ds.cancel')),
-              h('button', { type: 'button', className: 'n2s-btn danger', onClick: () => doImport('replace') }, t('kb.replace')),
-              h('button', { type: 'button', className: 'n2s-btn primary', onClick: () => doImport('merge') }, t('kb.merge'))))), document.body))
+              h('button', { type: 'button', className: 'n2s-btn danger', disabled: importing, onClick: () => doImport('replace') }, t('kb.replace')),
+              h('button', { type: 'button', className: 'n2s-btn primary', disabled: importing, onClick: () => doImport('merge') }, importing ? h('span', { className: 'n2s-spin' }) : null, t('kb.merge'))))), document.body))
     }
 
     function AboutSection({ t }) {

@@ -33,6 +33,16 @@ await test('quoteString / literalFor', () => {
 })
 
 // ---------------------------------------------------------------- parseSelect
+await test('parseSelect: MySQL `1--1` is arithmetic, not a comment; `-- x` is a comment', () => {
+  const a = parseSelect('select c, count(*) n from t where 1--1 group by c', { dialect: 'mysql' })
+  equal(a.where, '1--1')
+  equal(a.groupBy, 'c', 'GROUP BY after 1--1 is still seen')
+  const b = parseSelect('select c, count(*) n from t -- note\ngroup by c', { dialect: 'mysql' })
+  equal(b.groupBy, 'c')
+  const pg = parseSelect('select c, count(*) n from t where 1--1 group by c', { dialect: 'postgres' })
+  equal(pg.groupBy, undefined, 'postgres: `--1 group by c` is a comment, so there is no GROUP BY')
+})
+
 await test('parseSelect basic grouped', () => {
   const p = parseSelect('SELECT chain, COUNT(*) AS n FROM blockchain_transactions WHERE status = 1 GROUP BY chain HAVING COUNT(*) > 1 ORDER BY n DESC LIMIT 10;')
   equal(p.prefix, '')

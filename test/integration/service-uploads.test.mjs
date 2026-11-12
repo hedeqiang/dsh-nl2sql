@@ -102,6 +102,14 @@ try {
     await assert.rejects(call('stageUpload', { fileName: 'e.csv', base64: '' }), /为空/)
     await assert.rejects(call('importUpload', { uploadId: 'nope' }), /无效/)
   })
+  await test('a new file data source gets a clean name and no "undefined" description', async () => {
+    const csv = Buffer.from('a,b\n1,2\n').toString('base64')
+    const r = await call('importUpload', { fileName: 'sales-2026.csv', base64: csv })
+    const ds = (await call('listDatasources')).find(d => d.id === r.datasourceId)
+    assert.equal(ds.name, 'sales-2026')
+    assert.ok(!String(ds.description ?? '').includes('undefined'), ds.description)
+    await assert.rejects(call('importUpload', { base64: csv }), /缺少文件名/)
+  })
 } finally {
   await app.close()
 }

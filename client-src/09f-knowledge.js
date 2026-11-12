@@ -1,5 +1,6 @@
     function KnowledgeEditor({ kind, item, t, fields, schema, noteKeys, onCancel, onSave }) {
       const [form, setForm] = useState(() => ({ ...item, ...(Array.isArray(item?.synonyms) ? { synonyms: item.synonyms.join('，') } : {}) }))
+      const [busy, runBusy] = useBusy()
       return h('div', { className: 'n2s-card', style: { marginBottom: 12 } },
         h('div', { className: 'n2s-form' }, fields.map(([key, label, type]) => h('label', { key, className: `n2s-field ${type === 'textarea' || type?.startsWith('code') ? 'full' : ''}` },
           h('span', null, t(label)),
@@ -10,19 +11,19 @@
         h('datalist', { id: 'n2s-notekeys' }, noteKeys.slice(0, 2000).map(k2 => h('option', { key: k2, value: k2 }))),
         h('div', { className: 'n2s-row', style: { marginTop: 12, justifyContent: 'flex-end' } },
           h('button', { type: 'button', className: 'n2s-btn ghost', onClick: onCancel }, t('ds.cancel')),
-          h('button', { type: 'button', className: 'n2s-btn primary', onClick: () => onSave(form) }, t('ds.save'))))
+          h('button', { type: 'button', className: 'n2s-btn primary', disabled: busy, onClick: () => runBusy(() => onSave(form)) }, busy ? h('span', { className: 'n2s-spin' }) : null, t('ds.save'))))
     }
 
     function KnowledgeTab({ t, ds }) {
       const kb = useAsync(() => (ds ? call('getKnowledge', { datasourceId: ds.id }) : null), [ds?.id])
-      const schema = useAsync(() => (ds?.schemaAnalyzedAt ? call('analyzeSchema', { id: ds.id }) : null), [ds?.id, ds?.schemaAnalyzedAt])
+      const schema = useAsync(() => (ds?.schemaAnalyzedAt ? call('analyzeSchema', { id: ds.id }) : null), [ds?.id, ds?.schemaAnalyzedAt], [ds?.id])
       const [section, setSection] = useState('glossary')
       const [editing, setEditing] = useState(null)
       const [error, setError] = useState(null)
       const [drafts, setDrafts] = useState(null)
       const noteKeys = useMemo(() => (schema.value?.tables ?? []).flatMap(tb => [tb.name, ...tb.columns.map(c => `${tb.name}.${c.name}`)]), [schema.value])
       const allDatasources = useStore(s2 => s2.datasources)
-      const sgCount = useAsync(() => (ds ? call('suggestionCount', { datasourceId: ds.id }) : null), [ds?.id, kb.value])
+      const sgCount = useAsync(() => (ds ? call('suggestionCount', { datasourceId: ds.id }) : null), [ds?.id, kb.value], [ds?.id])
       if (!ds) return null
       const k = kb.value ?? { glossary: [], metrics: [], notes: {}, examples: [] }
       const save = async (kind, item) => {
@@ -31,7 +32,7 @@
       }
       const remove = async (kind, id) => {
         if (!await confirmDialog({ title: t('kb.deleteConfirm'), danger: true })) return
-        await call('deleteKnowledgeItem', { datasourceId: ds.id, kind, id }).catch(e => setError(e.message))
+        try { await call('deleteKnowledgeItem', { datasourceId: ds.id, kind, id }) } catch (e) { setError(e.message) }
         kb.reload()
       }
       const FIELDS = {
@@ -56,7 +57,7 @@
       if (section === 'glossary') list = k.glossary.length ? k.glossary.map(g => item(g.id, h(React.Fragment, null, g.term, g.synonyms?.length ? h('span', { className: 'n2s-muted n2s-small' }, `  ${g.synonyms.join(' / ')}`) : null),
         h('div', null, h('div', null, g.definition), g.sql && h('code', { className: 'n2s-md-code', style: { display: 'inline-block', marginTop: 6 } }, g.sql)), 'glossary', g)) : empty(t('kb.glossaryEmpty'))
       if (section === 'metric') list = k.metrics.length ? k.metrics.map(m => item(m.id, h(React.Fragment, null, m.name, m.unit ? h('span', { className: 'n2s-badge', style: { marginLeft: 6 } }, m.unit) : null),
-        h('div', null, h('div', { className: 'n2s-mono n2s-small' }, `${m.expression}${m.table ? ` FROM ${m.table}` : ''}${m.filter ? ` WHERE ${m.filter}` : ''}`), m.timeColumn && h('div', { className: 'n2s-muted n2s-small' }, `${t('kb.timeColumn')}: ${m.timeColumn}${m.dimensions?.length ? ` · ${t('kb.dimensions')}: ${m.dimensions.join(uiLang === 'zh' ? '、' : ', ')}` : ''}${m.synonyms?.length ? ` · ${t('kb.synonymsLabel')}: ${m.synonyms.join(uiLang === 'zh' ? '、' : ', ')}` : ''}`), m.description && h('div', { className: 'n2s-muted n2s-small' }, m.description)), 'metric', m)) : empty(t('kb.metricsEmpty'))
+        h('div', null, h('div', { className: 'n2s-mono n2s-small' }, `${m.expression}${m.table ? ` FROM ${m.table}` : ''}${m.filter ? ` WHERE ${m.filter}` : ''}`), m.timeColumn && h('div', { className: 'n2s-muted n2s-small' }, `${t('kb.timeColumn')}: ${m.timeColumn}${m.dimensions?.length ? ` · ${t('kb.dimensions')}: ${joinList(m.dimensions)}` : ''}${m.synonyms?.length ? ` · ${t('kb.synonymsLabel')}: ${joinList(m.synonyms)}` : ''}`), m.description && h('div', { className: 'n2s-muted n2s-small' }, m.description)), 'metric', m)) : empty(t('kb.metricsEmpty'))
       if (section === 'note') {
         const entries = Object.entries(k.notes).sort(([a], [b]) => a.localeCompare(b))
         list = h(React.Fragment, null,

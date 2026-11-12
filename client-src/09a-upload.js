@@ -39,6 +39,18 @@
       const [state, setState] = useState(null)
       const [drag, setDrag] = useState(false)
       const inputRef = useRef(null)
+      const box = useRef(null)
+      useFocusTrap(box)
+      const busyRef = useRef(false)
+      busyRef.current = Boolean(state?.busy)
+      useEffect(() => {
+        const prev = document.activeElement
+        setTimeout(() => box.current?.querySelector('[role=button], button')?.focus(), 0)
+        // Escape works wherever focus is (not only inside the dialog), but not under a confirm dialog or mid-upload.
+        const onKey = (e) => { if (e.key === 'Escape' && !feedbackStore.get().dialog && !busyRef.current) onClose() }
+        document.addEventListener('keydown', onKey)
+        return () => { document.removeEventListener('keydown', onKey); prev?.focus?.() }
+      }, [])
       const pick = async (f) => {
         if (!f) return
         setFile(f); setSheets(null); setState({ busy: true }); setProgress(0)
@@ -51,6 +63,8 @@
         } catch (e) { setState({ error: e.message }) }
       }
       const run = async () => {
+        if (busyRef.current) return
+        busyRef.current = true
         setState({ busy: true })
         try {
           const res = await call('importUpload', { datasourceId: target || undefined, newName: target ? undefined : newName, fileName: file.name, uploadId, mode, sheets: sheets.filter(x => x.include).map(x => ({ sheet: x.sheet, table: x.table, mode, columns: x.columns })) })
@@ -61,7 +75,7 @@
       }
       const typeOpts = ['TEXT', 'INTEGER', 'REAL', 'DATE', 'DATETIME']
       return ReactDOM.createPortal(h('div', { className: 'n2s-modal-backdrop', onMouseDown: (e) => { if (e.target === e.currentTarget) onClose() } },
-        h('div', { className: 'n2s-modal', role: 'dialog', 'aria-modal': true, 'aria-label': t('up.title'), style: { width: 'min(860px, 100%)' }, onKeyDown: (e) => { if (e.key === 'Escape' && !state?.busy) onClose() } },
+        h('div', { ref: box, className: 'n2s-modal', role: 'dialog', 'aria-modal': true, 'aria-label': t('up.title'), style: { width: 'min(860px, 100%)' } },
           h('div', { className: 'n2s-row', style: { marginBottom: 12 } }, h('span', { className: 'n2s-modal-title' }, t('up.title')), h('span', { className: 'n2s-grow' }), h('button', { type: 'button', className: 'n2s-iconbtn', 'aria-label': t('ds.cancel'), onClick: onClose }, Icon.close())),
           !sheets && h('div', {
             className: `n2s-drop ${drag ? 'over' : ''}`, role: 'button', tabIndex: 0,
@@ -91,7 +105,7 @@
                   h('tr', null, sh.columns.map((c, ci) => h('th', { key: ci, style: { top: 30, padding: '2px 8px' } }, h('select', { className: 'n2s-select', style: { height: 24, fontSize: 11, padding: '0 4px' }, value: c.type, 'aria-label': `${c.name} type`, onChange: e => setSheets(x => x.map((y, i) => i === si ? { ...y, columns: y.columns.map((cc, j) => j === ci ? { ...cc, type: e.target.value } : cc) } : y)) }, typeOpts.map(o => h('option', { key: o, value: o }, t(`up.type.${o}`)))))))),
                 h('tbody', null, sh.preview.slice(0, 8).map((r, ri) => h('tr', { key: ri }, sh.columns.map((c, ci) => h('td', { key: ci, className: c.type === 'INTEGER' || c.type === 'REAL' ? 'num' : undefined }, r[ci] === null || r[ci] === undefined ? '' : String(r[ci]))))))))))),
           state?.error && h('div', { className: 'n2s-notice err', style: { marginTop: 10 } }, state.error),
-          state?.done && h('div', { className: 'n2s-notice ok', style: { marginTop: 10 } }, fmt(t, 'up.done', { name: state.done.datasourceName }), ' ', state.done.results.map(r => r.ok ? fmt(t, 'up.resultOk', { table: r.table, rows: r.rows }) : `${r.sheet}: ${r.error}`).join('；')),
+          state?.done && h('div', { className: 'n2s-notice ok', style: { marginTop: 10 } }, fmt(t, 'up.done', { name: state.done.datasourceName }), ' ', joinClauses(state.done.results.map(r => r.ok ? fmt(t, 'up.resultOk', { table: r.table, rows: r.rows }) : `${colon(r.sheet)}${r.error}`))),
           h('div', { className: 'n2s-row', style: { marginTop: 14, justifyContent: 'flex-end' } },
             h('span', { className: 'n2s-faint n2s-small n2s-grow' }, t('up.privacy')),
             h('button', { type: 'button', className: 'n2s-btn ghost', onClick: onClose }, state?.done ? t('ds.close') : t('ds.cancel')),
