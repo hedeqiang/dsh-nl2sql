@@ -11,7 +11,8 @@ An enterprise NL2SQL plugin for DeepSeek Harness: connect databases, ask in plai
 - **Asking:** in a Harness conversation through the `nl2sql_*` tools; results render as ECharts charts or tables.
 - **Drill-down and "why did it change":** split by a dimension, show rows, rank dimensions by their contribution to a change.
 - **Metric library and business knowledge:** glossary, governed metrics (`nl2sql_metric`), column notes, verified examples; import / export; accuracy evaluation against the examples.
-- **Dashboards:** multiple boards, global filters, drag-to-reorder, three widths, snapshots, Excel export.
+- **Dashboards:** multiple boards, global filters, drag-to-reorder, three widths, snapshots, Excel export; a board may mix data sources — each chart shows its source and the board can be scoped to the current source.
+- **Large results in IM:** messages say how many rows are shown; Lark app bots and Telegram attach the full data as Excel.
 - **Channels:** Lark / Feishu, Telegram, WeCom and DingTalk through pluggable adapters ([docs/CHANNELS.md](docs/CHANNELS.md)); push Markdown and results (native charts, images or tables per platform), and @-mention bots that need no public URL.
 - **Automation:** scheduled reports, metric alerts (threshold / change / anomaly / missing), schema change detection.
 - **Safety:**
@@ -22,14 +23,40 @@ An enterprise NL2SQL plugin for DeepSeek Harness: connect databases, ask in plai
 
 ## Install
 
-Requires DeepSeek Harness (desktop or `dsh web`).
+Requires DeepSeek Harness 0.2 or later (desktop or `dsh web`). Published on npm as [`@hedeqiang/dsh-nl2sql`](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql).
+
+[![npm](https://img.shields.io/npm/v/@hedeqiang/dsh-nl2sql)](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql)
+
+**In Harness (recommended)**
+
+1. Sidebar → **Plugins** → **Add plugin**.
+2. Enter `@hedeqiang/dsh-nl2sql` (optionally with a version, e.g. `@hedeqiang/dsh-nl2sql@0.11.1`), install and enable it.
+3. **Data Q&A** appears in the sidebar, and the Data Q&A preset is available for new conversations.
+
+You can also ask the Harness agent: "install the plugin @hedeqiang/dsh-nl2sql".
+
+**Command line**
 
 ```bash
-git clone <this repo> dsh-nl2sql && cd dsh-nl2sql
+dsh plugin --profile desktop add @hedeqiang/dsh-nl2sql   # desktop app profile; dsh web uses "web" by default
+```
+
+Then enable it on the **Plugins** page (or restart Harness).
+
+**Upgrade:** update it from the plugin's details on the **Plugins** page, or run `dsh plugin --profile desktop update @hedeqiang/dsh-nl2sql`, then re-enable the plugin. Configuration and data live in `~/.dsh/nl2sql` and survive upgrades; older configuration is migrated on first load.
+
+**Uninstall:** remove it on the **Plugins** page or with `dsh plugin --profile desktop remove @hedeqiang/dsh-nl2sql`. Data in `~/.dsh/nl2sql` is kept; delete the directory if you no longer need it. Database passwords live in the Harness credential store.
+
+> All dependencies (mysql2, pg, ssh2, echarts, @resvg/resvg-js, @larksuiteoapi/node-sdk) ship prebuilt; no install scripts need to run.
+
+**From source (development)**
+
+```bash
+git clone https://github.com/hedeqiang/dsh-nl2sql.git && cd dsh-nl2sql
 pnpm install --ignore-scripts
 ```
 
-Install the directory as a bundle (plugin manager `install_bundle` with the absolute path), or add `@hedeqiang/dsh-nl2sql` to your profile's `dsh.profile.bundles` with a `link:` dependency. Once published, install `@hedeqiang/dsh-nl2sql` from npm.
+Enter the directory's absolute path in **Plugins** → **Add plugin** (it is linked, so re-enabling the plugin picks up code changes), or ask the agent to install the directory with the plugin manager.
 
 ## Use
 

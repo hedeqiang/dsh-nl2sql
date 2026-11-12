@@ -413,6 +413,8 @@
 .n2s-morebtn:hover{background:var(--n2s-hover);color:var(--dsw-alias-label-primary)}
 .n2s-btn.danger-text{color:var(--n2s-err)}
 /* ---- dashboard v2 ---- */
+.n2s-srcbadge{display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
+.n2s-seg.small button{height:26px;padding:0 10px;font-size:12px}
 .n2s-dash{grid-template-columns:repeat(6,minmax(0,1fr));align-items:start}
 .n2s-widget.w-third{grid-column:span 2}
 .n2s-widget.w-half{grid-column:span 3}

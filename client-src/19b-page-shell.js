@@ -105,7 +105,7 @@
                 nav.tab === 'schema' ? h(SchemaTab, { t, ds, onAskTable: (tb) => ask(fmt(t, 'ask.tablePrompt', { name: tb.name, comment: tb.comment ? `（${tb.comment}）` : '' })) }) :
                 nav.tab === 'knowledge' ? h(KnowledgeTab, { t, ds }) :
                 nav.tab === 'history' ? h(HistoryTab, { t, datasources, onOpenSession: (id) => ctx.uiWorkspace.openSession(id) }) :
-                nav.tab === 'dashboard' ? h(DashboardTab, { t }) :
+                nav.tab === 'dashboard' ? h(DashboardTab, { t, ds, datasources }) :
                 h(AdminArea, { t, ctx, section: ADMIN_SECTIONS.includes(nav.section) ? nav.section : 'sources', sub: nav.sub, onNavigate: setNav, ds, datasources }))),
             h(FeedbackLayer, { t })))
       }

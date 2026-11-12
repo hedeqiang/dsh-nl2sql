@@ -1,6 +1,15 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'dash.sourceOf': "数据源",
+      'dash.sourceMissing': "该图表的数据源已删除，无法刷新",
+      'dash.sourceMissingShort': "数据源已删除",
+      'dash.scope': "显示范围",
+      'dash.scopeAll': "全部数据源",
+      'dash.scopeCurrent': "仅 {name}",
+      'dash.sources': "包含数据源：{list}",
+      'dash.scopeEmpty': "这个看板里没有「{name}」的图表",
+      'dash.scopeEmptyHint': "另有 {n} 个其他数据源的图表被隐藏。",
       'im.attachFull': "超过 {n} 行的结果附带完整数据 Excel",
       'im.rowsLimit': "消息中每个结果最多显示 {n} 行，超出部分会注明；完整数据可在页面导出 Excel",
       'im.sentFile': "已附带完整数据 Excel",
@@ -995,6 +1004,15 @@
       'error.generic': '操作失败：{message}',
     }
     const en = {
+      'dash.sourceOf': "Data source",
+      'dash.sourceMissing': "This chart's data source was deleted; it cannot refresh",
+      'dash.sourceMissingShort': "source deleted",
+      'dash.scope': "Show",
+      'dash.scopeAll': "All sources",
+      'dash.scopeCurrent': "Only {name}",
+      'dash.sources': "Sources: {list}",
+      'dash.scopeEmpty': "No charts from \"{name}\" on this dashboard",
+      'dash.scopeEmptyHint': "{n} charts from other sources are hidden.",
       'im.attachFull': "Attach full data as Excel for results over {n} rows",
       'im.rowsLimit': "Messages show up to {n} rows per result and say when rows are omitted; export Excel on the page for full data",
       'im.sentFile': "full data attached as Excel",

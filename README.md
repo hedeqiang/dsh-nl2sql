@@ -1,6 +1,6 @@
 # dsh-nl2sql · 数据问答
 
-[DeepSeek Harness](https://github.com/deepseek-ai) 的企业级 NL2SQL 插件：连接数据库，用自然语言提问，Agent 写只读 SQL、执行并在对话中画图；结果可以固定到看板、推送到飞书，还能在飞书群里直接 @机器人提问。
+[DeepSeek Harness](https://github.com/deepseek-ai) 的企业级 NL2SQL 插件：连接数据库，用自然语言提问，Agent 写只读 SQL、执行并在对话中画图；结果可以固定到看板、推送到飞书 / Telegram / 企业微信 / 钉钉，还能在群里直接 @机器人提问。
 
 [English](README.en.md)
 
@@ -16,6 +16,8 @@
 
 **看板与推送**
 - 多看板、全局筛选（时间范围 / 维度）、拖拽排序、三档宽度、快照、Excel 导出。
+- 一个看板可以放多个数据源的图表：每个图表标注所属数据源，可切换「全部数据源 / 仅当前数据源」。
+- 推送大结果时注明「共 N 行，显示前 M 行」；飞书应用机器人和 Telegram 会附带完整数据 Excel。
 - IM 渠道：飞书 / Lark、Telegram、企业微信、钉钉（推送 Markdown 与结果，图表按平台能力用原生图表、图片或表格）；架构见 [docs/CHANNELS.md](docs/CHANNELS.md)，新增平台只需实现一个适配器。
 - 定时报告（基于 Harness 定时任务）、指标告警（阈值 / 环比 / 异常 / 无数据）、表结构变更检测。
 - 群聊 @机器人提问：飞书长连接、Telegram 长轮询、企业微信智能机器人长连接、钉钉 Stream 模式，都不需要公网地址。
@@ -28,22 +30,40 @@
 
 ## 安装
 
-需要 DeepSeek Harness 桌面版或 `dsh web`。
+需要 DeepSeek Harness 0.2 及以上（桌面版或 `dsh web`）。插件已发布到 npm：[`@hedeqiang/dsh-nl2sql`](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql)。
+
+[![npm](https://img.shields.io/npm/v/@hedeqiang/dsh-nl2sql)](https://www.npmjs.com/package/@hedeqiang/dsh-nl2sql)
+
+**方式一：在 Harness 里添加（推荐）**
+
+1. 打开左侧栏 **插件** → **添加插件**。
+2. 输入包名 `@hedeqiang/dsh-nl2sql`（可加版本，如 `@hedeqiang/dsh-nl2sql@0.11.1`），确认安装并启用。
+3. 左侧栏出现 **数据问答**，新建对话时也可以选择「数据问答」预设。
+
+也可以直接对 Harness 的 Agent 说：「安装插件 @hedeqiang/dsh-nl2sql」。
+
+**方式二：命令行**
 
 ```bash
-# 从源码（开发）
-git clone <this repo> dsh-nl2sql && cd dsh-nl2sql
-pnpm install --ignore-scripts      # 依赖：mysql2、pg、ssh2、echarts、@larksuiteoapi/node-sdk、@resvg/resvg-js
+dsh plugin --profile desktop add @hedeqiang/dsh-nl2sql   # 桌面版的 profile 名为 desktop；dsh web 默认为 web
 ```
 
-然后在 Harness 中让 Agent 安装本地目录（插件管理器 `install_bundle`，目标为本目录的绝对路径），或在 profile 的 `package.json` 中加入：
+然后在 **插件** 页启用它（或重启 Harness）。
 
-```json
-{ "dsh": { "profile": { "bundles": ["@hedeqiang/dsh-nl2sql"] } },
-  "dependencies": { "@hedeqiang/dsh-nl2sql": "link:/path/to/dsh-nl2sql" } }
+**升级**：在 **插件** 页的插件详情中更新，或执行 `dsh plugin --profile desktop update @hedeqiang/dsh-nl2sql`，然后重新启用插件。配置和数据保存在 `~/.dsh/nl2sql`，升级不会丢失；旧版本的配置会在首次加载时自动迁移。
+
+**卸载**：在 **插件** 页移除，或 `dsh plugin --profile desktop remove @hedeqiang/dsh-nl2sql`。卸载不会删除 `~/.dsh/nl2sql` 中的数据；不再需要时可手动删除该目录，数据库密码等凭据在 Harness 凭据库中，可在设置中清除。
+
+> 依赖（mysql2、pg、ssh2、echarts、@resvg/resvg-js、@larksuiteoapi/node-sdk）都使用预编译包，安装时不需要运行构建脚本。
+
+**从源码安装（开发）**
+
+```bash
+git clone https://github.com/hedeqiang/dsh-nl2sql.git && cd dsh-nl2sql
+pnpm install --ignore-scripts
 ```
 
-发布到 npm 后可直接安装 `@hedeqiang/dsh-nl2sql`。
+在 **插件** → **添加插件** 中填入本目录的绝对路径（以链接方式安装，改代码后重新启用插件即可生效），或让 Agent 用插件管理器安装该目录。
 
 ## 使用
 

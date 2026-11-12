@@ -21,6 +21,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
   Object.assign(global, { window: dom.window, document: dom.window.document, getComputedStyle: dom.window.getComputedStyle, MutationObserver: dom.window.MutationObserver, HTMLElement: dom.window.HTMLElement })
   Object.defineProperty(global, 'navigator', { value: dom.window.navigator, configurable: true })
   global.requestAnimationFrame = (f) => setTimeout(f, 0)
+  Object.defineProperty(global, 'localStorage', { value: dom.window.localStorage, configurable: true })
   global.ResizeObserver = class { observe() {} disconnect() {} }
   global.IS_REACT_ACT_ENVIRONMENT = true
   const React = req('react'); const ReactDOM = req('react-dom'); const { createRoot } = req('react-dom/client'); const { act } = React
@@ -335,6 +336,31 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.deepEqual(call?.payload?.ids, ['w2', 'w1'])
     await menu('更多操作', '宽度：整行')
     assert.equal(rpcCalls.filter((c) => c.method === 'updateWidget').pop()?.payload?.width, 'full')
+  })
+
+  await test('看板: mixed data sources are labelled, can be scoped to the current one; reorder keeps hidden widgets', async () => {
+    const saved = responses.listDashboard
+    responses.listDashboard = [
+      { id: 'w1', title: 'A1', sql: 'select 1', datasourceId: 'd1', chart: { type: 'table' }, width: 'half' },
+      { id: 'w9', title: 'ES 图', sql: 'select 9', datasourceId: 'dx', chart: { type: 'table' }, width: 'half' },
+      { id: 'w2', title: 'A2', sql: 'select 2', datasourceId: 'd1', chart: { type: 'table' }, width: 'half' },
+    ]
+    try { window.localStorage.removeItem('nl2sql:dashScope') } catch {}
+    await openTab('问答'); await openTab('看板')
+    const badges = [...document.querySelectorAll('.n2s-srcbadge')].map((b) => b.textContent)
+    assert.deepEqual(badges, ['本地', '数据源已删除', '本地'], 'each widget shows its source; unknown source flagged')
+    assert.match(text(), /包含数据源：本地、数据源已删除/)
+    await click('仅 本地')
+    assert.equal(document.querySelectorAll('.n2s-widget').length, 2)
+    assert.equal(window.localStorage.getItem('nl2sql:dashScope'), 'current')
+    const handle = document.querySelector('.n2s-draghandle')
+    await act(async () => { handle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) }); await settle(40)
+    assert.deepEqual(rpcCalls.filter((c) => c.method === 'reorderWidgets').pop().payload.ids, ['w2', 'w9', 'w1'], 'hidden w9 keeps its slot')
+    await click('全部数据源')
+    assert.equal(document.querySelectorAll('.n2s-widget').length, 3)
+    responses.listDashboard = saved
+    try { window.localStorage.removeItem('nl2sql:dashScope') } catch {}
+    await openTab('问答')
   })
 
   await test('tool views: nl2sql_query and nl2sql_overview results', async () => {
