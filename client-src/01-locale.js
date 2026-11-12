@@ -1,6 +1,14 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'bot.step7': '「事件与回调 → 回调配置」同样选择「使用长连接接收回调」，并添加回调「卡片回传交互（card.action.trigger）」，否则回答卡片上的「按维度拆分 / 为什么变化 / 明细 / 固定到看板」按钮点击无效。', 'bot.actionsHint': '回答卡片带有交互按钮：按维度拆分、为什么变化、明细、固定到看板（仅管理员/分析师）。点击者会按成员权限重新校验。',
+      'sg.section': '建议', 'sg.hint': '根据查询历史和反馈自动整理的候选知识，确认后才会加入业务知识。', 'sg.refresh': '刷新',
+      'sg.kind.example': '样例问答', 'sg.kind.metric': '指标', 'sg.kind.note': '字段备注', 'sg.kind.glossary': '业务词',
+      'sg.accept': '采纳', 'sg.acceptEdit': '编辑后采纳', 'sg.acceptDirect': '直接采纳', 'sg.dismiss': '忽略', 'sg.dismissConfirm': '忽略这条建议？忽略后不会再出现。',
+      'sg.accepted': '已加入业务知识', 'sg.dismissed': '已忽略', 'sg.evidence': '依据（{count} 条）', 'sg.score': '置信度 {score}',
+      'sg.src.feedback': '反馈', 'sg.src.agent': '助手', 'sg.src.ui': '页面',
+      'sg.empty': '暂时没有建议',
+      'sg.emptyHint': '建议来自：被点 👍 或已修正的反馈 → 样例问答；助手反复执行的同结构查询 → 样例问答；在至少 3 条查询里重复出现的聚合口径 → 指标；CASE WHEN / 别名里的取值映射 → 字段备注；在多个问题标题中反复出现的词 → 业务词。多问几次问题后再来看看。',
       'ds.needsSecret': "需要填写密码",
       'ds.needsSecretHint': "这是导入的配置，不含密码或密钥，请编辑并填写后才能使用。",
       'ph.dsName': "生产库-订单",
@@ -876,6 +884,14 @@
       'error.generic': '操作失败：{message}',
     }
     const en = {
+      'bot.step7': 'In Events & Callbacks → Callback configuration, also choose the persistent connection and add the callback "card.action.trigger" (card interaction); otherwise the Breakdown / Why / Details / Pin buttons on answer cards do nothing.', 'bot.actionsHint': 'Answer cards have buttons: breakdown by dimension, why it changed, details, pin to dashboard (admins/analysts only). The clicking member\'s permissions are re-checked.',
+      'sg.section': 'Suggestions', 'sg.hint': 'Candidate knowledge mined from query history and feedback. Nothing is added until you accept it.', 'sg.refresh': 'Refresh',
+      'sg.kind.example': 'Examples', 'sg.kind.metric': 'Metrics', 'sg.kind.note': 'Column notes', 'sg.kind.glossary': 'Terms',
+      'sg.accept': 'Accept', 'sg.acceptEdit': 'Edit, then accept', 'sg.acceptDirect': 'Accept as is', 'sg.dismiss': 'Dismiss', 'sg.dismissConfirm': 'Dismiss this suggestion? It will not come back.',
+      'sg.accepted': 'Added to business knowledge', 'sg.dismissed': 'Dismissed', 'sg.evidence': 'Evidence ({count})', 'sg.score': 'Confidence {score}',
+      'sg.src.feedback': 'Feedback', 'sg.src.agent': 'Assistant', 'sg.src.ui': 'Page',
+      'sg.empty': 'No suggestions yet',
+      'sg.emptyHint': 'Suggestions come from: 👍 or corrected feedback → examples; query shapes the assistant runs repeatedly → examples; aggregates repeated in 3+ queries → metrics; CASE WHEN / alias value mappings → column notes; words recurring in question titles → glossary terms. Ask a few more questions and check back.',
       'ds.needsSecret': "Password needed",
       'ds.needsSecretHint': "Imported without secrets; edit it and enter the password or secret.",
       'ph.dsName': "prod-orders",

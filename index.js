@@ -23,6 +23,8 @@ import { methods as m7 } from './service/evaluation.js'
 import { methods as m8 } from './service/alerts.js'
 import { methods as m9 } from './service/uploads.js'
 import { methods as m10 } from './service/admin.js'
+import { methods as mLarkActions } from './service/lark-actions.js'
+import { methods as mSuggest } from './service/suggestions.js'
 const { CHART_TYPES, DEFAULT_SETTINGS, RECORD_KINDS, RPC_PATH, Records, UserError, newId, pick, toUserError } = shared
 
 export const name = 'nl2sql'
@@ -131,6 +133,8 @@ class Nl2SqlService {
       clearTimeout(timer)
     }
     if (this.larkBot) { try { await this.larkBot.stop() } catch {} }
+    // Card-button analyses still running in the background (service/lark-actions.js).
+    if (this.larkActionJobs?.size) await Promise.race([Promise.allSettled([...this.larkActionJobs]), new Promise(r => setTimeout(r, 3000).unref?.())])
     await Promise.allSettled([...this.drivers.values()].map(p => p.then(d => d.close())))
     this.drivers.clear()
     await this.writing
@@ -138,7 +142,7 @@ class Nl2SqlService {
   }
 
 }
-for (const m of [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10]) Object.defineProperties(Nl2SqlService.prototype, Object.getOwnPropertyDescriptors(m))
+for (const m of [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, mSuggest, mLarkActions]) Object.defineProperties(Nl2SqlService.prototype, Object.getOwnPropertyDescriptors(m))
 const DATASOURCE_PARAM = { type: 'string', description: 'Data source id or name. Omit to use the one bound to this session.' }
 
 function textBlock(text) {
@@ -527,6 +531,11 @@ function registerRpc(ctx, service) {
     onboardingStatus: () => service.onboardingStatus(),
     dismissOnboarding: (p) => service.dismissOnboarding({ dismissed: p?.dismissed !== false }),
     reorderWidgets: (p) => service.reorderWidgets(p ?? {}),
+    // Knowledge suggestions mined from history and feedback.
+    listKnowledgeSuggestions: (p) => service.listKnowledgeSuggestions(p ?? {}),
+    suggestionCount: (p) => service.suggestionCount(p ?? {}),
+    acceptSuggestion: (p) => service.acceptSuggestion(p ?? {}),
+    dismissSuggestion: (p) => service.dismissSuggestion(p ?? {}),
   }
   // One exact POST route inside Connection's authenticated /api fence:
   // body { method, payload } → { ok, value } | { ok: false, error }.

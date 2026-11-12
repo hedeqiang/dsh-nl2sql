@@ -46,6 +46,12 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     exportConfig: { format: 'dsh-nl2sql-config', version: 1 }, aboutInfo: { version: '0.9.0', dataDir: '/tmp/x', nodeVersion: '24', sqliteVersion: '3', testsCommand: 'npm test' },
     listAlerts: [], listUsers: [], larkBotStatus: { enabled: false, status: { state: 'idle' }, conversations: [], allowP2p: true, sessionScope: 'chat' }, usageByActor: [], listAlertEvents: [],
     draftNotes: [{ key: 'orders.status', text: 'x' }],
+    suggestionCount: { datasourceId: 'd1', count: 2, byKind: { example: 1, metric: 1, note: 0, glossary: 0 } },
+    listKnowledgeSuggestions: { datasourceId: 'd1', total: 2, suggestions: [
+      { id: 'sg-0123456789', kind: 'example', item: { question: '各状态订单数', sql: 'select status, count(*) from orders group by status', note: '' }, evidence: [{ at: 1, question: '各状态订单数', sql: 'select status, count(*) from orders group by status', source: 'feedback' }], score: 0.9, reason: '用户对这条查询结果点了 👍' },
+      { id: 'sg-abcdefabcd', kind: 'metric', item: { name: '成交额', expression: 'SUM(amount)', table: 'orders', filter: 'status = 1', timeColumn: 'created_at', dimensions: ['channel'], synonyms: [] }, evidence: [], score: 0.6, reason: '3 条成功的查询使用了相同的聚合口径' },
+    ] },
+    acceptSuggestion: { accepted: 'sg-abcdefabcd' }, dismissSuggestion: { dismissed: 'sg-0123456789' },
     listFeedback: [{ id: 'fb1', at: Date.now(), rating: 'down', datasourceId: 'd1', title: 'T', question: '各状态笔数', sql: 'select 1', comment: '口径不对', status: 'open', sessionId: 's1' }],
     feedbackStats: { up: 3, down: 1, open: 1, rate: 0.75 }, submitFeedback: {}, resolveFeedback: {}, savePolicy: {},
     filterCandidates: { time: [{ column: 'created_at', label: '创建时间', tables: ['orders'] }], dims: [{ column: 'status', label: '状态', tables: ['orders'], values: ['0', '1'] }] },
@@ -154,6 +160,28 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await click('业务词表'); for (const s of ['指标库', '样例问答', '表/字段备注']) await click(s)
     await click('根据枚举字段生成草稿'); assert.match(text(), /待补充/)
     await click('+ 新增'); assert.ok(document.querySelectorAll('textarea').length >= 1)
+  })
+
+  await test('业务知识: 建议 pill with count, cards, accept via editor, 忽略 → dismissSuggestion', async () => {
+    await openTab('业务知识')
+    const pill = [...document.querySelectorAll('.n2s-subtabs button')].find((b) => b.textContent.startsWith('建议'))
+    assert.ok(pill, '建议 pill')
+    assert.equal(pill.querySelector('.count')?.textContent, '2')
+    await clickEl(pill, 40)
+    assert.match(text(), /各状态订单数/); assert.match(text(), /成交额/); assert.match(text(), /SUM\(amount\) FROM orders WHERE status = 1/)
+    assert.match(text(), /样例问答/); assert.match(text(), /依据（1 条）/); assert.match(text(), /置信度 90%/)
+    const metricCard = document.querySelector('[data-sg="sg-abcdefabcd"]')
+    await click('采纳', metricCard)
+    const nameInput = [...metricCard.querySelectorAll('input')][0]
+    assert.equal(nameInput.value, '成交额')
+    await setValue(nameInput, '成交金额')
+    await click('保存', metricCard)
+    const acc = rpcCalls.filter((c) => c.method === 'acceptSuggestion').pop()
+    assert.equal(acc.payload.id, 'sg-abcdefabcd'); assert.equal(acc.payload.item.name, '成交金额')
+    await click('忽略', document.querySelector('[data-sg="sg-0123456789"]'))
+    await clickEl([...document.querySelectorAll('.n2s-modal button')].find((b) => b.textContent === '忽略'), 40)
+    const dis = rpcCalls.filter((c) => c.method === 'dismissSuggestion').pop()
+    assert.deepEqual(dis?.payload, { datasourceId: 'd1', id: 'sg-0123456789' })
   })
 
   await test('看板: send-dashboard dialog and global filter bar structure', async () => {
