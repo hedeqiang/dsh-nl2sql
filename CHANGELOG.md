@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-12
+
+### Fixed
+- `npx -p @hedeqiang/dsh-nl2sql nl2sql-mcp` warned about an unsupported Node version: `engines.node` is now `>=18` (the bridge's requirement; the plugin itself runs on the Node bundled with DeepSeek Harness).
+
 ## [0.13.0] - 2026-11-12
 
 ### Added
@@ -122,7 +127,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.0...v0.12.1
