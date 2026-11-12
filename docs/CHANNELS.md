@@ -54,11 +54,15 @@ ChannelKind = {
   label: { zh, en }, description: { zh, en },
   // Form schema rendered generically by the UI:
   fields: [{ key, label:{zh,en}, type:'text'|'secret'|'select'|'url', required?, placeholder?, help?:{zh,en},
-             options?:[{value,label:{zh,en}}], pattern?: string, secret?: boolean, showIf?: { key, equals } }],
+             options?:[{value,label:{zh,en}}], pattern?: string, secret?: boolean, showIf?: { key, equals },
+             target?: boolean }],      // target: the field the 「选择群聊」 picker (listTargets) fills, e.g. Lark receiveId
   capabilities: {
     push: true,
     markdown: 'full' | 'basic' | 'none',
     charts: 'native' | 'image' | 'none',        // native card charts vs PNG upload vs tables only
+    chartImages?: boolean,                     // also supports PNG images when charts is 'native' (Lark app)
+    chartModes?: ('native'|'image'|'table')[], // selectable channel.chartMode values; first = default
+                                               // (derived from charts/chartImages when omitted)
     tables: 'native' | 'markdown' | 'text',
     buttons: boolean,                          // interactive buttons on pushed/bot messages
     bot: boolean,                              // inbound questions (no public URL needed)
@@ -92,9 +96,23 @@ InboundAction = { platform, channelId, operator: { id }, chatId, messageId, valu
                   reply(OutboundMessage) -> Promise<{ messageId? }> }
 ```
 
-Errors: adapters throw `ChannelError(code, message)` with a Chinese user-facing
-message and a stable code such as `channel/auth`, `channel/config`,
-`channel/network`, `channel/rate-limit`, `channel/rejected`.
+Errors: adapters throw `ChannelError(code, message, { field? })` with a Chinese
+user-facing message and a stable code such as `channel/auth`, `channel/config`,
+`channel/network`, `channel/rate-limit`, `channel/rejected` (Lark keeps its
+legacy `im/lark-<code>` / `im/config` codes). `field` names the form field key
+the error belongs to; page RPC errors pass it through as `error.field`
+(`{ ok:false, error:{ code, message, field? } }`).
+
+Adapters must not import `channels/index.js` (the registry imports them); use
+`channels/http.js` and `channels/message.js`. The `channel` object passed to
+`send` / `test` / `listTargets` / `createBot` is the stored record with its
+`config` fields also spread at the top level; `secrets` is a plain object keyed by
+the kind's secret field keys. `validate(input, existing)` receives
+`input = { name, config, secrets }` where `secrets` already merges stored values
+(omitted / empty secrets keep their stored value, `null` clears one), and returns
+the normalized `{ config, secrets }`. `test` may return `{ ok, detail, send:false }`
+to skip the follow-up test message (`send` defaults to true: a test message is
+sent after a successful check).
 
 ## Identities (members)
 
@@ -143,16 +161,24 @@ Existing RPC names keep working (`listChannels`, `saveChannel`, `deleteChannel`,
 `testChannel`, `listChannelChats`, `sendToChannel`, `sendDashboard`,
 `larkBotStatus`, `saveLarkBot`, `restartLarkBot`, `listDeliveries`). New:
 
-- `channelCatalog()` → `[{ platform, name:{zh,en}, kinds:[{ id, label, description, fields, capabilities, setupSteps }] }]`
-  (secrets fields marked `secret: true`; never any value).
+- `channelCatalog({ locale? })` → `[{ platform, name:{zh,en}, kinds:[{ id, label, description, fields, capabilities, setupSteps }] }]`
+  (secrets fields marked `secret: true`; never any value; with `locale`, `*Text` strings are added).
+  Adapters that fail to load are simply absent.
 - `listChannels()` → `[{ id, name, type, platform, description, isDefault, chartMode, config: {non-secret fields},
-  secretsSet: { <secretKey>: true }, needsSecret?, lastSentAt?, lastError?,
+  secretsSet: { <secretKey>: true }, hasSecret, needsSecret?, unsupported?, lastSentAt?, lastError?,
   capabilities, bot?: { enabled, allowP2p, sessionScope, status:{state,error?}, info? } }]`
+  (Lark channels also keep the legacy top-level `domain, appId, receiveIdType, receiveId, hasSign`;
+  `unsupported: true` when the channel's adapter is not loaded.)
 - `saveChannel({ id?, name, type, description?, isDefault?, chartMode?, config: {...}, secrets: {...only changed...}, bot?: {...} })`
   — legacy flat payloads (`webhookUrl`, `appId`, `appSecret`, `receiveId`…) are still accepted for Lark.
 - `listChannelTargets({ id? , type?, config?, secrets? })` → `[{ id, name, type }]` (unsaved credentials allowed; nothing stored).
-- `testChannel({ id })` → `{ ok, detail }` (sends a test message where the platform has no cheap auth check).
-- `botStatus()` → `[{ channelId, channelName, platform, enabled, status, info, conversations: [...] }]`
+- `testChannel({ id })` → `{ ok, detail, … }` (runs `kind.test` when present, then sends a test message
+  unless the check returned `send: false`).
+- `botStatus()` → `[{ channelId, channelName, platform, type, enabled, allowP2p, sessionScope, status, info, conversations: [...] }]`
+  (one entry per channel whose kind has `capabilities.bot`).
 - `saveBot({ channelId, enabled?, allowP2p?, sessionScope? })` → bot status for that channel; `restartBot({ channelId })`.
 - `listUsers` / `saveUser` use `identities: [{ platform, id, email? }]`; legacy `larkOpenId` / `larkChatId` / `email` accepted.
-- `getSettings` exposes `botDefaultRole`; `larkDefaultRole` is still returned as an alias.
+- `getSettings` exposes `botDefaultRole` / `botDefaultDatasourceIds`; `larkDefaultRole` / `larkDefaultDatasourceIds`
+  are still returned as aliases and accepted by `saveSettings` / `resetSettings`.
+- `listDeliveries({ limit? })`: entries carry `platform` for channel deliveries; bot answers use `source: '<platform>bot'`
+  (`larkbot`, `telegrambot`, …).

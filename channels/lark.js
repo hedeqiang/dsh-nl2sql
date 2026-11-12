@@ -1111,14 +1111,14 @@ export const kinds = [
       const secrets = { ...(input.secrets ?? {}) }
       const url = str(secrets.webhookUrl, 500)
       if (url) {
-        if (!WEBHOOK_RE.test(url)) throw new ChannelError('channel/config', 'Webhook 地址格式不正确，应为 https://open.feishu.cn/open-apis/bot/v2/hook/… （Lark 国际版为 open.larksuite.com）')
+        if (!WEBHOOK_RE.test(url)) throw new ChannelError('channel/config', 'Webhook 地址格式不正确，应为 https://open.feishu.cn/open-apis/bot/v2/hook/… （Lark 国际版为 open.larksuite.com）', { field: 'webhookUrl' })
         secrets.webhookUrl = url
         config.domain = url.includes('larksuite') ? 'lark' : 'feishu'
       } else {
         config.domain = input.config?.domain === 'lark' ? 'lark' : existing?.config?.domain ?? 'feishu'
       }
       if (typeof secrets.signSecret === 'string') secrets.signSecret = secrets.signSecret.trim() || null
-      if (!secrets.webhookUrl) throw new ChannelError('channel/config', '请填写 Webhook 地址')
+      if (!secrets.webhookUrl) throw new ChannelError('channel/config', '请填写 Webhook 地址', { field: 'webhookUrl' })
       return { config, secrets }
     },
     send: (channel, secrets, message) => sendMessage({ ...channel, type: 'lark_webhook' }, secrets, message),
@@ -1139,23 +1139,23 @@ export const kinds = [
         { value: 'union_id', label: { zh: '用户（union_id）', en: 'User (union_id)' } },
         { value: 'email', label: { zh: '邮箱', en: 'Email' } },
       ] },
-      { key: 'receiveId', label: { zh: '接收者 ID', en: 'Receiver ID' }, type: 'text', required: true, placeholder: 'oc_…', help: { zh: '推送目标；选择群时可点「列出群聊」', en: 'Push target; use "List chats" to pick a chat' } },
+      { key: 'receiveId', label: { zh: '接收者 ID', en: 'Receiver ID' }, type: 'text', required: true, placeholder: 'oc_…', target: true, help: { zh: '推送目标；选择群时可点「列出群聊」', en: 'Push target; use "List chats" to pick a chat' } },
     ],
-    capabilities: { push: true, markdown: 'full', charts: 'native', chartModes: ['native', 'image', 'table'], tables: 'native', buttons: true, bot: true, listTargets: true, mentionAll: true, maxMessageBytes: 28000 },
+    capabilities: { push: true, markdown: 'full', charts: 'native', chartImages: true, chartModes: ['native', 'image', 'table'], tables: 'native', buttons: true, bot: true, listTargets: true, mentionAll: true, maxMessageBytes: 28000 },
     setupSteps: APP_SETUP,
     validate(input, existing) {
       const c = input.config ?? {}
       const config = {
         domain: c.domain === 'lark' ? 'lark' : c.domain === 'feishu' ? 'feishu' : existing?.config?.domain ?? 'feishu',
         appId: str(c.appId, 64),
-        receiveIdType: RECEIVE_ID_TYPES.includes(c.receiveIdType) ? c.receiveIdType : c.receiveIdType ? (() => { throw new ChannelError('channel/config', `receiveIdType 必须是 ${RECEIVE_ID_TYPES.join(' / ')}`) })() : 'chat_id',
+        receiveIdType: RECEIVE_ID_TYPES.includes(c.receiveIdType) ? c.receiveIdType : c.receiveIdType ? (() => { throw new ChannelError('channel/config', `receiveIdType 必须是 ${RECEIVE_ID_TYPES.join(' / ')}`, { field: 'receiveIdType' }) })() : 'chat_id',
         receiveId: str(c.receiveId, 200),
       }
-      if (!config.appId) throw new ChannelError('channel/config', '请填写 App ID')
-      if (!config.receiveId) throw new ChannelError('channel/config', '请填写接收者 ID')
+      if (!config.appId) throw new ChannelError('channel/config', '请填写 App ID', { field: 'appId' })
+      if (!config.receiveId) throw new ChannelError('channel/config', '请填写接收者 ID', { field: 'receiveId' })
       const secrets = { ...(input.secrets ?? {}) }
       if (typeof secrets.appSecret === 'string') secrets.appSecret = secrets.appSecret.trim()
-      if (!secrets.appSecret) throw new ChannelError('channel/config', '请填写 App Secret')
+      if (!secrets.appSecret) throw new ChannelError('channel/config', '请填写 App Secret', { field: 'appSecret' })
       return { config, secrets }
     },
     send: (channel, secrets, message) => sendMessage({ ...channel, type: 'lark_app' }, secrets, message),

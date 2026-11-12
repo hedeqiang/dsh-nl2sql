@@ -8,10 +8,12 @@
  */
 
 export class ChannelError extends Error {
-  constructor(code, message) {
+  /** @param {{ field?: string }} [opts] - `field`: the form field key the error belongs to. */
+  constructor(code, message, { field } = {}) {
     super(message)
     this.name = 'ChannelError'
     this.code = code
+    if (field) this.field = field
   }
 }
 

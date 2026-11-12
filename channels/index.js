@@ -96,7 +96,12 @@ export function describeKind(kind) {
     platform: kind.platform,
     label: kind.label,
     description: kind.description,
-    fields: (kind.fields ?? []).map(f => ({ ...f, secret: Boolean(f.secret || f.type === 'secret'), ...(f.secret || f.type === 'secret' ? { default: undefined } : {}) })),
+    fields: (kind.fields ?? []).map(f => {
+      const secret = Boolean(f.secret || f.type === 'secret')
+      const out = { ...f, secret }
+      if (secret) delete out.default // never any secret value
+      return JSON.parse(JSON.stringify(out))
+    }),
     capabilities: { ...kind.capabilities },
     setupSteps: kind.setupSteps ?? { zh: [], en: [] },
   }
