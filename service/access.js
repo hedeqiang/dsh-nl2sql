@@ -123,8 +123,8 @@ export const methods = {
     }
   },
 
-  auditAdmin(action, detail) {
-    this.records.put('admin', { id: newId('ad'), at: Date.now(), action, detail: String(detail).slice(0, 300) })
+  auditAdmin(action, detail, actor) {
+    this.records.put('admin', { id: newId('ad'), at: Date.now(), action, detail: String(detail).slice(0, 300), ...(actor ? { actor: { id: actor.id, name: actor.name, kind: actor.kind } } : {}) })
   },
 
   /** Per-actor usage for the members page. */

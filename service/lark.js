@@ -2,8 +2,7 @@
  * Nl2SqlService methods: lark.
  * Mixed into the service prototype by index.js; `this` is the service.
  */
-import { buildCard } from '../im.js'
-import { addReaction, createLarkBot, getChatInfo, getUserInfo, replyMessage, replyText } from '../lark-bot.js'
+import { addReaction, createLarkBot, getChatInfo, getUserInfo, replyText } from '../lark-bot.js'
 import { PRESET_ID, UserError, hashText, oneOf, toUserError } from './shared.js'
 
 export const methods = {
@@ -56,6 +55,7 @@ export const methods = {
       logger: { debug() {}, info() {}, warn: (...a) => console.warn('nl2sql lark:', ...a), error: (...a) => console.warn('nl2sql lark:', ...a) },
       onStatus: () => {},
       onMessage: (m) => { this.handleLarkMessage(m).catch(error => console.warn('nl2sql lark: handler failed: %s', error.message)) },
+      onCardAction: (evt) => this.handleLarkCardAction(evt),
     })
     await this.larkBot.start()
   },
@@ -139,12 +139,9 @@ export const methods = {
       if (turn.reason === 'timeout') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（查询超过 10 分钟仍未完成，已停止。请缩小范围后重试。）</font>`
       if (turn.reason === 'input-required') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（需要在 Harness 中确认后才能继续，已取消本次回答。）</font>`
       const results = turn.resultIds.map(id => this.lookupResult(id)).filter(Boolean).filter(r => { try { this.assertResultAccess(r, { ...actor, kind: 'lark' }); return true } catch { return false } }).slice(-4)
-      const card = buildCard({ title: text.length > 40 ? `${text.slice(0, 40)}…` : text, text: body || '（没有生成文字回答）', results, footer: `数据问答 · ${ds.name} · ${actor.name}` })
-      try {
-        await replyMessage({ ...creds, messageId: m.messageId, card })
-      } catch (error) {
-        try { await replyMessage({ ...creds, messageId: m.messageId, card: buildCard({ title: text.slice(0, 40), text: body, results, footer: `数据问答 · ${ds.name}` }, { charts: false }) }) } catch { await reply(body.slice(0, 3000) || `回复失败：${error.message}`) }
-      }
+      // Buttons (拆分 / 为什么变化 / 明细 / 固定到看板) carry opaque tokens only; see service/lark-actions.js.
+      const withActions = await this.withLarkCardActions(results, { actor, sessionId: conv.sessionId, chatId: m.chatId, chatType: m.chatType, replyTo: m.messageId, depth: 0 })
+      await this.replyLarkCard(creds, m.messageId, { title: text.length > 40 ? `${text.slice(0, 40)}…` : text, text: body || '（没有生成文字回答）', results: withActions, footer: `数据问答 · ${ds.name} · ${actor.name}` })
       void addReaction({ ...creds, messageId: m.messageId, emojiType: turn.reason === 'idle' ? 'DONE' : 'CrossMark' })
       this.recordDelivery({ channel: { id: 'larkbot', name: `飞书机器人 · ${conv.chatName ?? actor.name}` }, title: text.slice(0, 60), status: turn.reason === 'idle' ? 'ok' : 'error', ...(turn.reason === 'idle' ? {} : { error: turn.reason }), results: results.length, source: 'larkbot', sessionId: conv.sessionId, elapsedMs: Date.now() - started })
       await this.save()

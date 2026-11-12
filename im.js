@@ -338,12 +338,37 @@ export function markdownElements(md) {
 }
 
 /**
+ * Interactive controls under one result (card JSON 2.0, callback behaviors).
+ * spec: { buttons?: [{ text, value, type? }], select?: { placeholder, value, options: [{ text, value }] } }
+ * `value` objects are echoed back verbatim in card.action.trigger: keep them
+ * opaque (a short token) — the receiver must not trust them.
+ */
+export function actionElement(spec) {
+  const items = []
+  const plain = (s, n = 40) => ({ tag: 'plain_text', content: String(s ?? '').slice(0, n) })
+  if (spec?.select?.options?.length) {
+    items.push({
+      tag: 'select_static',
+      placeholder: plain(spec.select.placeholder),
+      width: 'default',
+      options: spec.select.options.slice(0, 10).map(o => ({ text: plain(o.text, 60), value: String(o.value).slice(0, 64) })),
+      behaviors: [{ type: 'callback', value: spec.select.value }],
+    })
+  }
+  for (const b of spec?.buttons ?? []) {
+    items.push({ tag: 'button', text: plain(b.text, 20), type: b.type ?? 'default', size: 'small', behaviors: [{ type: 'callback', value: b.value }] })
+  }
+  if (!items.length) return undefined
+  return { tag: 'column_set', flex_mode: 'flow', horizontal_spacing: 'small', columns: items.map(el => ({ tag: 'column', width: 'auto', vertical_align: 'center', elements: [el] })) }
+}
+
+/**
  * Build a JSON 2.0 card.
  * @param {{ title: string, text?: string, results?: object[], footer?: string, template?: string, includeSql?: boolean }} message
  *   text is Markdown (headings, lists, code, tables, links, <font>, <at> ...).
  *   results may carry imageKey when a PNG was uploaded (app bots, fallback).
  */
-export function buildCard(message, { maxRows = 10, charts = true } = {}) {
+export function buildCard(message, { maxRows = 10, charts = true, actions = true } = {}) {
   const elements = [...markdownElements(message.text)]
   let tables = elements.filter(e => e.tag === 'table').length
   let chartCount = 0
@@ -371,6 +396,10 @@ export function buildCard(message, { maxRows = 10, charts = true } = {}) {
     } else {
       elements.push({ tag: 'markdown', content: r.rows.slice(0, 5).map(row => row.slice(0, 6).map(cellText).join(' | ')).join('\n') })
     }
+    if (r.cardActions && actions) {
+      const el = actionElement(r.cardActions)
+      if (el) elements.push(el)
+    }
     if (r.sql && message.includeSql) elements.push({ tag: 'markdown', content: `\`\`\`sql\n${r.sql.slice(0, 1500)}\n\`\`\`` })
   }
   if (message.footer) elements.push({ tag: 'markdown', content: `<font color='grey'>${message.footer}</font>`, text_size: 'notation' })
@@ -382,8 +411,8 @@ export function buildCard(message, { maxRows = 10, charts = true } = {}) {
   }
   // Card bodies are limited to ~30 KB: shrink tables/charts until it fits.
   const size = Buffer.byteLength(JSON.stringify(card))
-  if (size > CARD_LIMIT && maxRows > 3) return buildCard(message, { maxRows: Math.max(3, Math.floor(maxRows / 2)), charts })
-  if (size > CARD_LIMIT && charts) return buildCard(message, { maxRows, charts: false })
+  if (size > CARD_LIMIT && maxRows > 3) return buildCard(message, { maxRows: Math.max(3, Math.floor(maxRows / 2)), charts, actions })
+  if (size > CARD_LIMIT && charts) return buildCard(message, { maxRows, charts: false, actions })
   if (size > CARD_LIMIT) {
     card.body.elements = elements.filter(e => e.tag !== 'table')
     card.body.elements.push({ tag: 'markdown', content: '<font color=\'grey\'>（数据过多，表格已省略）</font>' })

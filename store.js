@@ -187,6 +187,28 @@ export class ResultStore {
     this.db.prepare(`DELETE FROM records WHERE kind = ? AND rowid IN (SELECT rowid FROM records WHERE kind = ? ORDER BY at DESC, rowid DESC LIMIT -1 OFFSET ${Math.max(0, Math.floor(keep))})`).run(kind, kind)
   }
 
+  // ------------------------------------------------------------ card action tokens
+
+  /** Opaque Lark card-button token → server-side context (expires; bounded). */
+  putActionToken(token, body, now = Date.now()) {
+    this.db.exec('CREATE TABLE IF NOT EXISTS action_tokens (token TEXT PRIMARY KEY, created_at INTEGER NOT NULL, body TEXT NOT NULL)')
+    this.db.prepare('INSERT OR REPLACE INTO action_tokens (token, created_at, body) VALUES (?, ?, ?)').run(token, now, JSON.stringify(body))
+  }
+
+  getActionToken(token) {
+    try {
+      const r = this.db.prepare('SELECT created_at, body FROM action_tokens WHERE token = ?').get(token)
+      return r ? { ...JSON.parse(r.body), created: Number(r.created_at) } : undefined
+    } catch { return undefined }
+  }
+
+  pruneActionTokens(maxAgeMs, keep, now = Date.now()) {
+    try {
+      this.db.prepare('DELETE FROM action_tokens WHERE created_at < ?').run(now - maxAgeMs)
+      this.db.prepare(`DELETE FROM action_tokens WHERE token IN (SELECT token FROM action_tokens ORDER BY created_at DESC LIMIT -1 OFFSET ${Math.max(0, Math.floor(keep))})`).run()
+    } catch {}
+  }
+
   /** Run fn inside one transaction (bulk migration). */
   transaction(fn) {
     this.db.exec('BEGIN')

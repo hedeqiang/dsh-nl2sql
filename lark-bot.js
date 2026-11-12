@@ -2,8 +2,9 @@
 // plus small fetch-based OpenAPI helpers for replying.
 //
 // Inbound: @larksuiteoapi/node-sdk WSClient + EventDispatcher subscribed to
-// `im.message.receive_v1`. No public URL is needed; the app must be configured
-// with "使用长连接接收事件" in the developer console.
+// `im.message.receive_v1` and the card callback `card.action.trigger`. No public
+// URL is needed; the app must be configured with "使用长连接接收事件" (and the
+// callback "卡片回传交互" in long-connection mode) in the developer console.
 //
 // Outbound helpers use plain `fetch` (no SDK) so they can be tested against a
 // mock server through the optional `baseUrl` parameter.
@@ -15,6 +16,8 @@ const HOSTS = {
   lark: 'https://open.larksuite.com',
 }
 const DEFAULT_TIMEOUT_MS = 15000
+// Feishu waits 3 s for a card callback response; answer well before that.
+const CARD_ACTION_TIMEOUT_MS = 2500
 const APP_ID_RE = /^cli_[0-9a-fA-F]{16}$/
 // Lark codes meaning "the tenant token is invalid/expired" → drop cache, retry once.
 const TOKEN_INVALID_CODES = new Set([99991661, 99991663, 99991664, 99991668])
@@ -318,6 +321,41 @@ export function normalizeMessageEvent(data, { botOpenId } = {}) {
   return out
 }
 
+/**
+ * normalizeCardActionEvent(data) → normalized card callback | null
+ * `card.action.trigger` (card JSON 2.0 callback) as delivered over the long
+ * connection: the SDK EventDispatcher flattens { schema, header, event } into
+ * one object; a raw envelope is accepted too. Message/chat ids live under
+ * `event.context` (older surfaces put them at the root).
+ * Everything here comes from the client and is untrusted: `value`, `option`
+ * and `formValue` must only be used as lookup keys, never for authorization.
+ */
+export function normalizeCardActionEvent(data) {
+  if (!data || typeof data !== 'object') return null
+  const ev = data.event && !data.action ? data.event : data
+  const header = data.header ?? data
+  const op = ev?.operator
+  const action = ev?.action
+  if (!op?.open_id || !action || typeof action !== 'object') return null
+  let value = action.value
+  if (typeof value === 'string') { try { value = JSON.parse(value) } catch { /* keep string */ } }
+  const ctx = ev.context ?? {}
+  return {
+    eventId: header.event_id ?? data.event_id,
+    operator: { openId: op.open_id, userId: op.user_id || undefined, unionId: op.union_id || undefined, name: op.name || undefined },
+    tag: action.tag ?? 'unknown',
+    name: action.name || undefined,
+    value: value && typeof value === 'object' && !Array.isArray(value) ? value : (value === undefined ? {} : { raw: value }),
+    option: typeof action.option === 'string' ? action.option : undefined,
+    options: Array.isArray(action.options) ? action.options.map(String) : undefined,
+    formValue: action.form_value && typeof action.form_value === 'object' ? action.form_value : undefined,
+    inputValue: typeof action.input_value === 'string' ? action.input_value : undefined,
+    messageId: ctx.open_message_id ?? ev.open_message_id,
+    chatId: ctx.open_chat_id ?? ev.open_chat_id,
+    host: ev.host,
+  }
+}
+
 /** createDedupe(max = 500) → (id) => boolean  (true = first time seen, false = duplicate). LRU. */
 export function createDedupe(max = 500) {
   const seen = new Map()
@@ -362,7 +400,7 @@ function loadSdk() {
  * transient (network) failures in the background; credential/config failures
  * are terminal until start() is called again.
  */
-export function createLarkBot({ appId, appSecret, domain = 'feishu', onMessage, onStatus, logger, logLevel = 'warn', baseUrl } = {}) {
+export function createLarkBot({ appId, appSecret, domain = 'feishu', onMessage, onCardAction, onStatus, logger, logLevel = 'warn', baseUrl, cardActionTimeoutMs = CARD_ACTION_TIMEOUT_MS } = {}) {
   const log = {
     error: (m) => logger?.error?.(m),
     warn: (m) => logger?.warn?.(m),
@@ -371,6 +409,7 @@ export function createLarkBot({ appId, appSecret, domain = 'feishu', onMessage, 
   }
   const http = { appId, appSecret, domain, baseUrl }
   const dedupe = createDedupe(500)
+  const cardDedupe = createDedupe(500)
   let st = { state: 'idle', since: Date.now() }
   let lastEventAt
   let wsClient = null
@@ -429,6 +468,34 @@ export function createLarkBot({ appId, appSecret, domain = 'feishu', onMessage, 
     }
   }
 
+  /**
+   * card.action.trigger: the value returned here is what the SDK sends back
+   * as the callback response (WSClient.handleEventData base64-encodes the
+   * handler result into the ack frame). Feishu needs it within 3 s, so the
+   * handler is raced against a timeout and falls back to a neutral toast.
+   */
+  async function handleCardAction(data) {
+    lastEventAt = Date.now()
+    let evt
+    try { evt = normalizeCardActionEvent(data) } catch (e) { log.error(`[lark] bad card.action.trigger: ${e?.message || e}`) }
+    if (!evt) return undefined
+    if (evt.eventId && !cardDedupe(evt.eventId)) return { toast: { type: 'info', content: '已收到，正在处理…' } }
+    if (!onCardAction) return undefined
+    let timer
+    try {
+      const res = await Promise.race([
+        Promise.resolve().then(() => onCardAction(evt)),
+        new Promise((resolve) => { timer = setTimeout(() => resolve({ toast: { type: 'info', content: '已收到，正在处理…' } }), cardActionTimeoutMs) }),
+      ])
+      return res ?? undefined
+    } catch (e) {
+      log.error(`[lark] onCardAction handler failed: ${e?.stack || e?.message || e}`)
+      return { toast: { type: 'error', content: '处理失败，请稍后重试' } }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   async function doStart(myGen) {
     setStatus('connecting')
     if (!appId || !appSecret) return setStatus('error', 'Lark App ID and App Secret are required')
@@ -483,6 +550,10 @@ export function createLarkBot({ appId, appSecret, domain = 'feishu', onMessage, 
       client = new lark.WSClient(params)
       const dispatcher = new lark.EventDispatcher({ loggerLevel: level, logger: sdkLog }).register({
         'im.message.receive_v1': (data) => { handleEvent(data) },
+        // Card callbacks arrive over the same long connection as event frames
+        // whose header.event_type is card.action.trigger (requires subscribing to
+        // the callback in the developer console, long-connection mode).
+        'card.action.trigger': (data) => handleCardAction(data),
       })
       wsClient = client
       await client.start({ eventDispatcher: dispatcher })

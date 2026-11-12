@@ -59,7 +59,7 @@
           h('label', { className: 'n2s-field' }, h('span', null, t('bot.scope')),
             h('select', { className: 'n2s-select', value: v.sessionScope, onChange: e => save({ sessionScope: e.target.value }) }, ['chat', 'user'].map(x => h('option', { key: x, value: x }, t(`bot.scope.${x}`))))),
           h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: v.allowP2p, onChange: e => save({ allowP2p: e.target.checked }) }), t('bot.p2p'))),
-        h('details', { className: 'n2s-details' }, h('summary', null, t('bot.setup')), h('ol', { className: 'n2s-small n2s-muted', style: { paddingLeft: 18, margin: '8px 0 0', lineHeight: 1.8 } }, [1, 2, 3, 4, 5, 6].map(i => h('li', { key: i }, t(`bot.step${i}`))))),
+        h('details', { className: 'n2s-details' }, h('summary', null, t('bot.setup')), h('ol', { className: 'n2s-small n2s-muted', style: { paddingLeft: 18, margin: '8px 0 0', lineHeight: 1.8 } }, [1, 2, 3, 4, 5, 7, 6].map(i => h('li', { key: i }, t(`bot.step${i}`)))), h('div', { className: 'n2s-small n2s-faint', style: { marginTop: 6 } }, t('bot.actionsHint'))),
         error && h('div', { className: 'n2s-notice err', style: { marginTop: 10 } }, error),
         v.conversations.length > 0 && h('div', { style: { marginTop: 12 } }, h('div', { className: 'n2s-h2' }, t('bot.convs')),
           h('div', { className: 'n2s-table-wrap' }, h('table', { className: 'n2s-table' },
