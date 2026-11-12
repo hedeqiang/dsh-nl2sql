@@ -1,0 +1,265 @@
+{
+ "glossary": [
+  {
+   "term": "商户",
+   "synonyms": [
+    "merchant",
+    "接入方"
+   ],
+   "definition": "接入账本的业务方，表 merchants，code 为商户编码，其它表用 merchant_code 关联。",
+   "sql": "merchants.code = xxx.merchant_code"
+  },
+  {
+   "term": "用户",
+   "synonyms": [
+    "uid",
+    "客户"
+   ],
+   "definition": "商户下的终端用户，表 users，按 uid 与账户、分录、充值、提现关联。",
+   "sql": ""
+  },
+  {
+   "term": "币种",
+   "synonyms": [
+    "token",
+    "代币",
+    "资产"
+   ],
+   "definition": "加密资产代码，各表的 token_code，对应 tokens.code；不同币种金额不可直接相加。",
+   "sql": ""
+  },
+  {
+   "term": "可用余额",
+   "synonyms": [
+    "余额",
+    "available"
+   ],
+   "definition": "账户当前可用金额 accounts.available，按 uid + token_code 唯一。",
+   "sql": "accounts.available"
+  },
+  {
+   "term": "冻结余额",
+   "synonyms": [
+    "冻结",
+    "frozen"
+   ],
+   "definition": "提现处理中被冻结的金额 accounts.frozen。",
+   "sql": "accounts.frozen"
+  },
+  {
+   "term": "记账凭证",
+   "synonyms": [
+    "凭证",
+    "journal",
+    "voucher"
+   ],
+   "definition": "一笔业务生成一张凭证（journals，voucher_no 唯一），对应多条分录（journal_entries）。",
+   "sql": ""
+  },
+  {
+   "term": "分录",
+   "synonyms": [
+    "记账分录",
+    "流水",
+    "entry"
+   ],
+   "definition": "journal_entries：某用户某币种在某个 bucket（available 可用 / frozen 冻结）上的一次变动，amount 正数为增加、负数为减少，balance_after 为变动后余额。",
+   "sql": ""
+  },
+  {
+   "term": "业务类型",
+   "synonyms": [
+    "biz_type"
+   ],
+   "definition": "opening 期初建账、deposit 充值、withdrawal_freeze 提现冻结、withdrawal_settle 提现结算、transfer 转账、adjustment_credit 调增、adjustment_debit 调减、invoice_payment 收款单支付、invoice_refund 收款单退款。",
+   "sql": ""
+  },
+  {
+   "term": "充值",
+   "synonyms": [
+    "入金",
+    "deposit"
+   ],
+   "definition": "链上入金记录，表 deposits；status=succeeded 为成功。",
+   "sql": "deposits.status = 'succeeded'"
+  },
+  {
+   "term": "提现",
+   "synonyms": [
+    "出金",
+    "withdrawal"
+   ],
+   "definition": "链上出金记录，表 withdrawals；status 有 succeeded / processing；fee 为手续费，received_amount 为到账金额。",
+   "sql": ""
+  },
+  {
+   "term": "余额调整",
+   "synonyms": [
+    "调账",
+    "adjustment"
+   ],
+   "definition": "人工调增/调减，表 balance_adjustments，direction：credit=调增，debit=调减。",
+   "sql": ""
+  }
+ ],
+ "metrics": [
+  {
+   "name": "分录笔数",
+   "expression": "COUNT(*)",
+   "table": "journal_entries",
+   "timeColumn": "created_at",
+   "dimensions": "biz_type, bucket, token_code",
+   "synonyms": "流水笔数, 记账笔数",
+   "description": "记账分录条数"
+  },
+  {
+   "name": "凭证数",
+   "expression": "COUNT(*)",
+   "table": "journals",
+   "timeColumn": "created_at",
+   "dimensions": "biz_type, token_code",
+   "synonyms": "记账凭证数",
+   "description": "记账凭证数量（一笔业务一张）"
+  },
+  {
+   "name": "充值笔数",
+   "expression": "COUNT(*)",
+   "table": "deposits",
+   "timeColumn": "created_at",
+   "filter": "status = 'succeeded'",
+   "dimensions": "network, token_code, merchant_code",
+   "synonyms": "入金笔数",
+   "description": "成功的充值笔数"
+  },
+  {
+   "name": "充值金额",
+   "expression": "SUM(amount)",
+   "table": "deposits",
+   "timeColumn": "created_at",
+   "filter": "status = 'succeeded'",
+   "dimensions": "network, token_code, merchant_code",
+   "synonyms": "入金金额",
+   "description": "成功充值金额；不同币种不可相加，应按 token_code 分组"
+  },
+  {
+   "name": "提现笔数",
+   "expression": "COUNT(*)",
+   "table": "withdrawals",
+   "timeColumn": "created_at",
+   "dimensions": "status, network, token_code, merchant_code",
+   "synonyms": "出金笔数",
+   "description": "提现笔数（含处理中）"
+  },
+  {
+   "name": "提现金额",
+   "expression": "SUM(amount)",
+   "table": "withdrawals",
+   "timeColumn": "created_at",
+   "filter": "status = 'succeeded'",
+   "dimensions": "network, token_code, merchant_code",
+   "synonyms": "出金金额",
+   "description": "成功提现金额；按 token_code 分组"
+  },
+  {
+   "name": "提现手续费",
+   "expression": "SUM(fee)",
+   "table": "withdrawals",
+   "timeColumn": "created_at",
+   "filter": "status = 'succeeded'",
+   "dimensions": "network, token_code",
+   "synonyms": "手续费",
+   "description": "成功提现的手续费"
+  },
+  {
+   "name": "新增用户数",
+   "expression": "COUNT(*)",
+   "table": "users",
+   "timeColumn": "created_at",
+   "dimensions": "merchant_code",
+   "synonyms": "注册用户数, 新用户",
+   "description": "新创建的用户数"
+  }
+ ],
+ "notes": {
+  "journal_entries.bucket": "available=可用余额，frozen=冻结余额",
+  "journal_entries.amount": "正数增加、负数减少",
+  "withdrawals.status": "succeeded=成功，processing=处理中",
+  "accounts.available": "可用余额（按 uid+token_code 唯一）",
+  "merchants.code": "商户编码，其它表 merchant_code 关联此列",
+  "balance_adjustments.direction": "credit=调增，debit=调减"
+ },
+ "examples": [
+  {
+   "question": "每天的记账分录笔数",
+   "sql": "SELECT DATE(created_at) AS 日期, COUNT(*) AS 分录笔数 FROM journal_entries GROUP BY DATE(created_at) ORDER BY 日期"
+  },
+  {
+   "question": "各业务类型的分录笔数",
+   "sql": "SELECT biz_type, COUNT(*) AS 笔数 FROM journal_entries GROUP BY biz_type ORDER BY 笔数 DESC"
+  },
+  {
+   "question": "可用和冻结分录各有多少笔",
+   "sql": "SELECT bucket, COUNT(*) AS 笔数 FROM journal_entries GROUP BY bucket"
+  },
+  {
+   "question": "每个商户有多少用户",
+   "sql": "SELECT m.name AS 商户, COUNT(u.id) AS 用户数 FROM merchants m LEFT JOIN users u ON u.merchant_code = m.code GROUP BY m.code, m.name ORDER BY 用户数 DESC"
+  },
+  {
+   "question": "账户数最多的 10 个币种",
+   "sql": "SELECT token_code, COUNT(*) AS 账户数 FROM accounts GROUP BY token_code ORDER BY 账户数 DESC, token_code LIMIT 10"
+  },
+  {
+   "question": "各币种的可用余额和冻结余额合计",
+   "sql": "SELECT token_code, SUM(available) AS 可用余额, SUM(frozen) AS 冻结余额 FROM accounts GROUP BY token_code ORDER BY 可用余额 DESC"
+  },
+  {
+   "question": "有冻结余额的账户有多少个",
+   "sql": "SELECT COUNT(*) AS 账户数 FROM accounts WHERE frozen > 0"
+  },
+  {
+   "question": "各状态的提现笔数和金额",
+   "sql": "SELECT status, token_code, COUNT(*) AS 笔数, SUM(amount) AS 金额 FROM withdrawals GROUP BY status, token_code ORDER BY 笔数 DESC"
+  },
+  {
+   "question": "成功提现的手续费按币种合计",
+   "sql": "SELECT token_code, SUM(fee) AS 手续费 FROM withdrawals WHERE status = 'succeeded' GROUP BY token_code"
+  },
+  {
+   "question": "各网络的充值笔数",
+   "sql": "SELECT network, COUNT(*) AS 充值笔数 FROM deposits WHERE status = 'succeeded' GROUP BY network ORDER BY 充值笔数 DESC"
+  },
+  {
+   "question": "每个商户的充值、提现、转账笔数",
+   "sql": "SELECT m.name AS 商户, (SELECT COUNT(*) FROM deposits d WHERE d.merchant_code = m.code) AS 充值, (SELECT COUNT(*) FROM withdrawals w WHERE w.merchant_code = m.code) AS 提现, (SELECT COUNT(*) FROM transfers t WHERE t.merchant_code = m.code) AS 转账 FROM merchants m"
+  },
+  {
+   "question": "每天新增用户数",
+   "sql": "SELECT DATE(created_at) AS 日期, COUNT(*) AS 新增用户 FROM users GROUP BY DATE(created_at) ORDER BY 日期"
+  },
+  {
+   "question": "各业务类型的凭证数",
+   "sql": "SELECT biz_type, COUNT(*) AS 凭证数 FROM journals GROUP BY biz_type ORDER BY 凭证数 DESC"
+  },
+  {
+   "question": "余额调增和调减各多少笔",
+   "sql": "SELECT direction, COUNT(*) AS 笔数 FROM balance_adjustments GROUP BY direction"
+  },
+  {
+   "question": "支持充值的链类型有哪些，各有多少个币种网络",
+   "sql": "SELECT chain_type, COUNT(*) AS 网络数 FROM token_networks WHERE deposit_enabled = 1 GROUP BY chain_type ORDER BY 网络数 DESC"
+  },
+  {
+   "question": "处理中的提现有哪些",
+   "sql": "SELECT withdrawal_no, token_code, network, amount, created_at FROM withdrawals WHERE status = 'processing' ORDER BY created_at DESC"
+  },
+  {
+   "question": "按状态统计收款单的单数、金额和已退款金额",
+   "sql": "SELECT status, token_code, COUNT(*) AS 单数, SUM(amount) AS 金额, SUM(refunded_amount) AS 已退款 FROM invoices GROUP BY status, token_code"
+  },
+  {
+   "question": "分录最多的 10 个用户",
+   "sql": "SELECT uid, COUNT(*) AS 分录笔数 FROM journal_entries GROUP BY uid ORDER BY 分录笔数 DESC, uid LIMIT 10"
+  }
+ ]
+}

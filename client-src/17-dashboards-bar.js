@@ -1,0 +1,36 @@
+    // ---------------------------------------------------- dashboards bar
+
+    function DashboardSwitcher({ t, value, onChange }) {
+      const list = useAsync(() => call('listDashboards'), [value?.id])
+      const v = list.value
+      if (!v) return null
+      const cur = v.dashboards.find(d => d.id === v.current)
+      const act = async (fn) => { try { const r = await fn(); list.reload(); onChange(r?.current ?? v.current) } catch (e) { notifyError(e) } }
+      return h('div', { className: 'n2s-dashtabs', role: 'tablist' },
+        v.dashboards.map(d => h('button', { key: d.id, type: 'button', role: 'tab', 'aria-selected': d.id === v.current, onClick: () => act(() => call('selectDashboard', { id: d.id })) }, d.name, h('span', { className: 'count' }, d.widgets))),
+        h(Dropdown, { label: t('dash.manage'), trigger: { className: 'n2s-btn small ghost', content: h(React.Fragment, null, '+', Icon.chev(10)) }, items: [
+          { label: t('dash.new'), icon: Icon.chart(14), onClick: async () => { const name = await promptDialog({ title: t('dash.newName') }); if (name) act(() => call('saveDashboard', { name })) } },
+          { label: t('dash.duplicate'), icon: Icon.copy(14), onClick: async () => { const name = await promptDialog({ title: t('dash.newName'), value: `${cur?.name ?? ''} 副本` }); if (name) act(() => call('saveDashboard', { name, copyFrom: v.current })) } },
+          { label: t('dash.renameBoard'), icon: Icon.edit(14), onClick: async () => { const name = await promptDialog({ title: t('dash.renameBoard'), value: cur?.name }); if (name) act(() => call('saveDashboard', { id: v.current, name })) } },
+          { divider: true },
+          v.dashboards.length > 1 && { label: t('dash.deleteBoard'), icon: Icon.trash(14), danger: true, onClick: async () => { if (await confirmDialog({ title: fmt(t, 'dash.deleteBoardConfirm', { name: cur?.name }), danger: true })) act(() => call('deleteDashboard', { id: v.current })) } },
+        ] }))
+    }
+
+    function CacheStats({ t }) {
+      const st = useAsync(() => call('cacheStats'), [])
+      const v = st.value
+      return h('div', { className: 'n2s-row' },
+        h('span', { className: 'n2s-small n2s-muted' }, v ? fmt(t, 'settings.cacheStatsText', { results: v.results, mb: (v.bytes / 1048576).toFixed(1), cache: v.cacheEntries }) : '…'),
+        h('button', { type: 'button', className: 'n2s-btn small ghost', onClick: async () => { await call('clearCache'); st.reload() } }, t('settings.clearCache')))
+    }
+
+    function ChannelSelect({ t, value, onChange }) {
+      const channels = useChannels()
+      return h('select', { className: 'n2s-select', value, onChange: e => onChange(e.target.value) }, h('option', { value: '' }, t('rep.pushNone')), channels.map(c => h('option', { key: c.id, value: c.id }, c.name)))
+    }
+
+    // Questions started from the page bind their new session to the chosen
+    // data source as soon as the session appears in the composer.
+    const pendingAsks = []
+

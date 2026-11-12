@@ -1,0 +1,62 @@
+{
+  "name": "@local/dsh-nl2sql",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Enterprise NL2SQL: MySQL, PostgreSQL and Elasticsearch data sources (optionally over SSH), schema analysis, natural-language queries, charts, overviews and scheduled reports.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "service/*.js",
+    "drivers.js",
+    "policy.js",
+    "filters.js",
+    "im.js",
+    "store.js",
+    "xlsx.js",
+    "analysis.js",
+    "lark-bot.js",
+    "sqlite-driver.js",
+    "sql-guard.js",
+    "lib/client.js",
+    "lib/client.echarts.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.76.0",
+    "@resvg/resvg-js": "2.6.2",
+    "echarts": "6.1.0",
+    "mysql2": "3.24.6",
+    "pg": "8.23.1",
+    "ssh2": "1.17.0"
+  },
+  "scripts": {
+    "build": "node scripts/build-echarts.mjs",
+    "test": "ELECTRON_RUN_AS_NODE=1 '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness' test/run.mjs",
+    "build:client": "node scripts/build-client.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

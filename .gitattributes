@@ -1,0 +1,4 @@
+# Generated bundles: keep diffs readable, mark as generated
+lib/client.js linguist-generated=true
+lib/client.echarts.js linguist-generated=true -diff
+eval/02-data.sql linguist-generated=true -diff

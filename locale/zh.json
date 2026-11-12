@@ -1,0 +1,1 @@
+{"meta": {"title": "数据问答（NL2SQL）", "description": "连接 MySQL 5.7+ / PostgreSQL / Elasticsearch（支持 SSH 隧道），分析表结构，用自然语言查询并在对话中自动生成图表、表概览与定时报告；可推送到飞书 / Lark；只读执行，支持脱敏、审计与业务知识库。"}}

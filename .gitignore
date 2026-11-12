@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+# scratch files created by local debugging
+_*.mjs
+_*.config.mjs
+*.tgz
