@@ -33,7 +33,7 @@ export async function boot({ dataDir, services = {}, label = 'svc' } = {}) {
   async function call(method, payload) {
     const res = await fetchRoute.fetch(new Request('http://x/api/nl2sql.rpc', { method: 'POST', body: JSON.stringify({ method, payload }) }))
     const r = await res.json()
-    if (!r.ok) throw Object.assign(new Error(r.error.message), { code: r.error.code })
+    if (!r.ok) throw Object.assign(new Error(r.error.message), { code: r.error.code, ...(r.error.field ? { field: r.error.field } : {}) })
     return r.value
   }
   const exec = (id = 's-test') => ({ agent: { id } })
@@ -52,7 +52,8 @@ export async function boot({ dataDir, services = {}, label = 'svc' } = {}) {
     }
     rmSync(dir, { recursive: true, force: true })
   }
-  return { call, tool, tools, exec, close, ctx, service, dir, creds }
+  const fetchRouteFn = (req) => fetchRoute.fetch(req)
+  return { call, tool, tools, exec, close, ctx, service, dir, creds, fetchRoute: fetchRouteFn }
 }
 
 /** Simple in-memory stand-in for the DSH `schedule` service. */
