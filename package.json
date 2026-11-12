@@ -2,7 +2,7 @@
   "name": "@local/dsh-nl2sql",
   "version": "0.9.0",
   "private": true,
-  "description": "Enterprise NL2SQL: MySQL, PostgreSQL and Elasticsearch data sources (optionally over SSH), schema analysis, natural-language queries, charts, overviews and scheduled reports.",
+  "description": "Data Q&A (NL2SQL) for DeepSeek Harness: ask MySQL / PostgreSQL / Elasticsearch / CSV in plain language, charts, dashboards, alerts, Lark push and bot, access control.",
   "type": "module",
   "exports": {
     ".": "./index.js",
@@ -39,8 +39,10 @@
   },
   "scripts": {
     "build": "node scripts/build-echarts.mjs",
-    "test": "ELECTRON_RUN_AS_NODE=1 '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness' test/run.mjs",
-    "build:client": "node scripts/build-client.mjs"
+    "test": "node test/run.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "test:fast": "node test/run.mjs --fast",
+    "check": "node scripts/build-client.mjs --check && node test/run.mjs --fast"
   },
   "dsh": {
     "bundle": {
@@ -58,5 +60,23 @@
         "@deepseek-ai/dsh-client-ui-workspace"
       ]
     }
+  },
+  "license": "MIT",
+  "author": "hedeqiang <laravel_code@163.com>",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-bundle",
+    "nl2sql",
+    "text-to-sql",
+    "bi",
+    "mysql",
+    "postgresql",
+    "elasticsearch",
+    "lark",
+    "feishu"
+  ],
+  "engines": {
+    "node": ">=24"
   }
 }

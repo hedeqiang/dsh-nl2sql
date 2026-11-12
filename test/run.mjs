@@ -68,8 +68,10 @@ if (opts.list) { for (const f of files) console.log(f); process.exit(0) }
 if (!files.length) { console.error('no test files matched'); process.exit(1) }
 
 // ------------------------------------------------------------------ runtime
-const useElectron = existsSync(ELECTRON)
-const runtime = useElectron ? ELECTRON : process.execPath
+// NL2SQL_TEST_RUNTIME overrides the runtime (e.g. a Linux Harness build or plain node in CI).
+const override = process.env.NL2SQL_TEST_RUNTIME
+const useElectron = !override && existsSync(ELECTRON)
+const runtime = override || (useElectron ? ELECTRON : process.execPath)
 console.log(`nl2sql tests — runtime: ${useElectron ? 'DeepSeek Harness (Electron as Node)' : process.execPath} · ${files.length} file(s) · timeout ${opts.timeout}s${opts.fast ? ' · --fast' : ''}\n`)
 
 function runFile(rel) {

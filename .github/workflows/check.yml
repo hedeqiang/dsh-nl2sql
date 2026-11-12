@@ -1,0 +1,17 @@
+name: check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # The full suite needs the Harness runtime and databases; CI runs the
+      # portable checks: syntax, client bundle up to date, unit tests.
+      - run: for f in index.js service/*.js *.js lib/client.js; do node --check "$f"; done
+      - run: node scripts/build-client.mjs --check
+      - run: node test/run.mjs --fast
