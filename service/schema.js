@@ -7,7 +7,7 @@ import { annotateSchema, columnMasked, filterSchema, normalizePolicy, policyActi
 import { admitSql } from '../sql-guard.js'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { DIALECT_HINTS, UserError, classifyColumn, classifyTable, inferRelations, maskValue, newId, requireText, singular, upsert } from './shared.js'
+import { DIALECT_HINTS, SENSITIVE_RULES_VERSION, UserError, classifyColumn, classifyTable, inferRelations, maskValue, newId, requireText, singular, upsert } from './shared.js'
 
 /** Character bigrams (whitespace removed, works for Chinese) plus ASCII words of 3+ characters. */
 export function textGrams(text) {
@@ -16,6 +16,23 @@ export function textGrams(text) {
   for (let i = 0; i < s.length - 1; i++) out.add(s.slice(i, i + 2))
   for (const w of String(text ?? '').toLowerCase().match(/[a-z0-9_]{3,}/g) ?? []) out.add(w)
   return out
+}
+
+/**
+ * Re-apply the current sensitive-column rules to a cached schema (rules change between
+ * versions, e.g. a bare `token` currency column is no longer sensitive). Only the
+ * 'sensitive' role is touched; other roles stay as analysed.
+ */
+export function reclassifySensitive(schema) {
+  if (!schema?.tables || schema.sensitiveRules === SENSITIVE_RULES_VERSION) return schema
+  for (const t of schema.tables) for (const c of t.columns ?? []) {
+    const want = classifyColumn(c, t).includes('sensitive')
+    const has = (c.roles ?? []).includes('sensitive')
+    if (want && !has) c.roles = [...(c.roles ?? []), 'sensitive']
+    if (!want && has) c.roles = c.roles.filter(r => r !== 'sensitive')
+  }
+  schema.sensitiveRules = SENSITIVE_RULES_VERSION
+  return schema
 }
 
 export const methods = {
@@ -87,6 +104,7 @@ export const methods = {
     if (previous && settings.schemaWatch !== false) {
       try { this.recordSchemaChange(ds, previous, schema) } catch (error) { console.warn('nl2sql: schema diff failed: %s', error.message) }
     }
+    schema.sensitiveRules = SENSITIVE_RULES_VERSION
     this.schemas.set(ds.id, schema)
     ds.schemaAnalyzedAt = schema.analyzedAt
     if (raw.version && !ds.serverVersion) ds.serverVersion = raw.version
@@ -97,7 +115,7 @@ export const methods = {
 
   async readSchemaFile(id) {
     try {
-      return JSON.parse(await readFile(join(this.dir, `schema-${id}.json`), 'utf8'))
+      return reclassifySensitive(JSON.parse(await readFile(join(this.dir, `schema-${id}.json`), 'utf8')))
     } catch {
       return undefined
     }

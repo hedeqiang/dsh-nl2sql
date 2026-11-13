@@ -9,7 +9,7 @@ import { admitSql, prepareSql, stripSql } from '../sql-guard.js'
 import { cacheKey } from '../store.js'
 import { createHash } from 'node:crypto'
 import { writeXlsx } from '../xlsx.js'
-import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, UserError, callContext, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
+import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, SENSITIVE_RULES_VERSION, isCredentialToken, UserError, callContext, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
 
 export const methods = {
   // ---------------------------------------------------------------- query
@@ -87,7 +87,7 @@ export const methods = {
     }
     // Query cache: dashboards, reruns and reports reuse a recent identical result.
     const ttlMs = (settings.cacheTtlSec ?? 0) * 1000
-    const key = ttlMs > 0 && useCache && this.store ? cacheKey([ds.id, admitted.sql, settings.maxRows, settings.maskSensitive, ds.policy ?? null, ds.updatedAt ?? 0, rowRules, rowRulesSig ?? null]) : null
+    const key = ttlMs > 0 && useCache && this.store ? cacheKey([ds.id, admitted.sql, settings.maxRows, settings.maskSensitive, SENSITIVE_RULES_VERSION, ds.policy ?? null, ds.updatedAt ?? 0, rowRules, rowRulesSig ?? null]) : null
     if (key) {
       const hit = this.store.cached(key, ttlMs)
       if (hit && (hit.rowRulesSig ?? undefined) === rowRulesSig) {
@@ -142,7 +142,7 @@ export const methods = {
     if (settings.maskSensitive) {
       res.columns.forEach((f, i) => {
         const col = f.table ? schema?.tables.find(t => t.name === f.table)?.columns.find(c => c.name === f.column) : undefined
-        if (col?.roles.includes('sensitive') || SENSITIVE_NAME.test(f.name)) sensitive.add(i)
+        if (col?.roles.includes('sensitive') || SENSITIVE_NAME.test(f.name) || (!col && isCredentialToken(f.name, f.table))) sensitive.add(i)
       })
     }
     for (const row of cells) for (const i of sensitive) row[i] = maskValue(res.columns[i].name, row[i])

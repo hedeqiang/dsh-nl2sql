@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-13
+
+### Fixed
+- A column named just `token` was always masked, but in crypto / payment databases it is the currency (USDT, BTC…). It is now masked only in credential tables (sessions, oauth, api keys…) or when its comment says it is a credential; credential names such as `access_token`, `api_token` and `token_hash` are still masked. Mask any other column explicitly with the data source's access policy.
+- `tel`, `mail` and `mobile` no longer match inside other words (`whitelist_status`, `hotel`, `telegram_id`, `mailbox`).
+- Cached schema analyses are re-classified with the new rules on load (no re-analysis needed), and cached query results masked under the old rules are not reused.
+
 ## [0.14.1] - 2026-11-13
 
 ### Fixed
@@ -144,7 +151,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.0...v0.13.1

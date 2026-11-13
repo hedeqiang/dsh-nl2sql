@@ -57,14 +57,24 @@ export function pick(obj, keys) {
   return out
 }
 
-// "token" alone is ambiguous (crypto token_code / token_price are business data):
-// only credential-like token names count as sensitive.
-export const SENSITIVE_NAME = /(phone|mobile|tel|email|mail|id_?card|idno|identity|passport|password|passwd|pwd|secret|(?:access|auth|api|refresh|session|bearer|csrf|jwt|push|device)_?token|^token$|token_?(?:hash|secret|key)$|bank_?card|card_?no|身份证|手机|电话|邮箱|密码)/i
+// "token" alone is ambiguous: in crypto / payment schemas it is the currency (USDT, BTC…), so a
+// bare `token` column is NOT sensitive by name. Credential-like names (access_token, api_token,
+// token_hash, …) are; a bare `token` counts only in credential tables or with a credential comment
+// (see isCredentialToken). Mask anything else explicitly with the access policy's masked columns.
+export const SENSITIVE_NAME = /(phone|(?:^|_)mobile(?:_?(?:no|num|number))?(?:_|$)|(?:^|_)tel(?:ephone)?(?:_?(?:no|num|number))?(?:_|$)|e_?mail|(?:^|_)mail(?:_?addr(?:ess)?)?(?:_|$)|id_?card|idno|identity_?(?:no|num|number|card)|passport|password|passwd|pwd|secret|(?:access|auth|api|refresh|session|bearer|csrf|jwt|push|device)_?token|token_?(?:hash|secret|key)$|bank_?card|card_?no|身份证|手机|电话|邮箱|密码)/i
+const CREDENTIAL_TABLE = /(session|oauth|auth|login|credential|api_?key|access_?key|personal_?access|user_?token|refresh_?token|jwt|sso)/i
+const CREDENTIAL_COMMENT = /(令牌|凭证|凭据|密钥|访问码|登录态|credential|access token|auth token|bearer|jwt)/i
+/** A bare `token` column that holds a credential (by table name or comment), not a currency. */
+export function isCredentialToken(name, table, comment) {
+  return /^token$/i.test(String(name ?? '')) && (CREDENTIAL_TABLE.test(String(table ?? '')) || CREDENTIAL_COMMENT.test(String(comment ?? '')))
+}
+/** Bumped whenever the sensitive-column rules change (part of result cache keys). */
+export const SENSITIVE_RULES_VERSION = 3
 
 export function maskValue(column, value) {
   if (value === null || value === undefined) return value
   const s = String(value)
-  if (/(password|passwd|pwd|secret|token|密码)/i.test(column)) return '******'
+  if (/(password|passwd|pwd|secret|密码)/i.test(column) || /(?:access|auth|api|refresh|session|bearer|csrf|jwt|push|device)_?token|token_?(?:hash|secret|key)$|^token$/i.test(column)) return '******'
   if (/(email|mail|邮箱)/i.test(column) && s.includes('@')) {
     const [u, d] = s.split('@')
     return `${u.slice(0, 1)}***@${d}`
@@ -91,10 +101,9 @@ export function classifyColumn(col, table) {
   if (t === 'enum' || t === 'set' || (ENUM_NAME.test(name) && (t === 'tinyint' || t === 'smallint' || t === 'char' || t === 'varchar' || t === 'int'))) roles.push('enum')
   if (NUMERIC_TYPES.has(t) && !roles.includes('id') && !roles.includes('enum') && !roles.includes('time') && !/^is_|^has_/.test(name)) roles.push('measure')
   if (TEXT_TYPES.has(t) && GEO_NAME.test(name)) roles.push('geo')
-  if (SENSITIVE_NAME.test(name) || SENSITIVE_NAME.test(col.comment ?? '')) roles.push('sensitive')
+  if (SENSITIVE_NAME.test(name) || SENSITIVE_NAME.test(col.comment ?? '') || isCredentialToken(name, typeof table === 'string' ? table : table?.name, col.comment)) roles.push('sensitive')
   if (/^is_|^has_/.test(name) || col.columnType === 'tinyint(1)' || t === 'bit') roles.push('flag')
   if (roles.length === 0 && TEXT_TYPES.has(t)) roles.push('text')
-  void table
   return roles
 }
 
