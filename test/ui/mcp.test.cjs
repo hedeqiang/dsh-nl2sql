@@ -31,12 +31,24 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     { id: 'mt-1', name: '我的 Cursor', prefix: 'n2s_mcp_abcd', scope: { type: 'owner' }, createdAt: Date.now() - 86400000, lastUsedAt: null },
     { id: 'mt-2', name: '分析组', prefix: 'n2s_mcp_efgh', scope: { type: 'role', role: 'analyst', datasourceIds: ['d1'], datasourceNames: ['本地'], rowRules: [{ column: 'status', values: ['1'] }] }, createdAt: Date.now(), lastUsedAt: Date.now() },
   ] }
+  status.toolNames = ['list_datasources', 'get_schema', 'query', 'list_metrics', 'explain_sql']
+  status.tokens[1] = { ...status.tokens[1], expiresAt: Date.now() + 86400000 * 3, tools: ['query'], rateLimit: 30 }
+  const callLog = [
+    { id: 'mc-1', at: Date.now() - 1000, tokenId: 'mt-2', tokenName: '分析组', method: 'tools/call', tool: 'query', datasource: '本地', ms: 42, status: 'ok', rows: 3 },
+    { id: 'mc-2', at: Date.now() - 2000, tokenId: 'mt-2', tokenName: '分析组', method: 'tools/call', tool: 'get_schema', datasource: '本地', ms: 7, status: 'error', error: 'denied' },
+    { id: 'mc-3', at: Date.now() - 3000, tokenId: 'mt-1', tokenName: '我的 Cursor', method: 'tools/list', ms: 1, status: 'cancelled' },
+  ]
+  let selfTest = { ok: true, url: 'http://127.0.0.1:47860/mcp', tools: ['a', 'b', 'c'], steps: [{ step: 'server/discover', ok: true, ms: 3, detail: 'versions 2026-07-28' }, { step: 'tools/list', ok: true, ms: 2, detail: '3 tools' }] }
   const calls = []
   const responses = {
     listDatasources: [ds],
     mcpStatus: () => status,
     saveMcpSettings: (p) => { status = { ...status, ...p, running: p.enabled ?? status.enabled }; return status },
-    createMcpToken: (p) => { const tok = { id: `mt-new-${status.tokens.length}`, name: p.name, prefix: 'n2s_mcp_zzzz', scope: { type: p.scope.memberId ? 'member' : p.scope.role ? 'role' : 'owner' }, createdAt: Date.now(), lastUsedAt: null }; status = { ...status, tokens: [...status.tokens, tok] }; return { ...tok, token: 'n2s_mcp_zzzzSECRETVALUE' } },
+    createMcpToken: (p) => { const tok = { id: `mt-new-${status.tokens.length}`, name: p.name, prefix: 'n2s_mcp_zzzz', scope: p.scope.memberId ? { type: 'member', memberId: p.scope.memberId, memberName: '张三' } : p.scope.role ? { type: 'role', role: p.scope.role, datasourceIds: p.scope.datasourceIds, datasourceNames: ['本地'], rowRules: p.scope.rowRules ?? [] } : { type: 'owner' }, tools: p.tools ?? null, rateLimit: p.rateLimit ?? null, expiresAt: p.expiresAt ?? null, createdAt: Date.now(), lastUsedAt: null }; status = { ...status, tokens: [...status.tokens, tok] }; return { ...tok, token: 'n2s_mcp_zzzzSECRETVALUE' } },
+    updateMcpToken: (p) => { status = { ...status, tokens: status.tokens.map(t => (t.id === p.id ? { ...t, name: p.name, expiresAt: p.expiresAt, tools: p.tools, rateLimit: p.rateLimit } : t)) }; return status.tokens.find(t => t.id === p.id) },
+    rotateMcpToken: (p) => ({ ...status.tokens.find(t => t.id === p.id), token: 'n2s_mcp_ROTATED_SECRET' }),
+    mcpCallLog: (p) => callLog.filter(r => (!p.tokenId || r.tokenId === p.tokenId) && (!p.status || r.status === p.status)),
+    mcpSelfTest: () => selfTest,
     revokeMcpToken: (p) => { status = { ...status, tokens: status.tokens.filter(t => t.id !== p.id) }; return { revoked: p.id } },
     listUsers: [{ id: 'u1', name: '张三', role: 'viewer', datasourceIds: ['d1'] }],
     onboardingStatus: { hasDatasource: true, analyzed: true, hasKnowledge: true, askedQuestion: true, hasChannel: true, dismissed: true },
@@ -143,6 +155,130 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(sel, 'u1'); sel.dispatchEvent(new window.Event('change', { bubbles: true })) })
     await clickEl(btn('创建令牌', form))
     assert.deepEqual(calls.filter(c => c.method === 'createMcpToken').at(-1).payload, { name: 'M', scope: { memberId: 'u1' } })
+    await clickEl(btn('我已保存'))
+  })
+
+
+  await test('setup wizard: ten client tabs, each with its own snippet filled with the URL and placeholder', async () => {
+    const seg = [...document.querySelectorAll('.n2s-mcp-snippets')].at(-1)
+    const tabs = [...seg.querySelectorAll('[role=tab]')].map(b => b.getAttribute('data-client'))
+    assert.deepEqual(tabs, ['claude', 'claudeCode', 'cursor', 'vscode', 'cline', 'windsurf', 'codex', 'gemini', 'zed', 'continue'])
+    const pre = () => seg.querySelector('pre[data-snippet]')
+    const url = 'http://127.0.0.1:47860/mcp'
+    const expect = {
+      claudeCode: [/claude mcp add --transport http nl2sql http:\/\/127\.0\.0\.1:47860\/mcp/, /--header "Authorization: Bearer <YOUR_TOKEN>"/, /--transport stdio .* -- npx -y -p @hedeqiang\/dsh-nl2sql nl2sql-mcp/],
+      cursor: [/"mcpServers"/, /"url": "http:\/\/127\.0\.0\.1:47860\/mcp"/],
+      vscode: [/"servers"/, /"type": "http"/],
+      cline: [/"type": "streamableHttp"/, /"mcpServers"/],
+      windsurf: [/"serverUrl": "http:\/\/127\.0\.0\.1:47860\/mcp"/],
+      codex: [/^\[mcp_servers\.nl2sql\]/, /url = "http:\/\/127\.0\.0\.1:47860\/mcp"/, /http_headers = \{ "Authorization" = "Bearer <YOUR_TOKEN>" \}/],
+      gemini: [/"httpUrl": "http:\/\/127\.0\.0\.1:47860\/mcp"/],
+      zed: [/"context_servers"/],
+      continue: [/type: streamable-http/, /requestOptions:/, /Authorization: Bearer <YOUR_TOKEN>/],
+      claude: [/"command": "npx"/, /NL2SQL_MCP_TOKEN/],
+    }
+    for (const k of tabs) {
+      await clickEl(seg.querySelector(`[data-client="${k}"]`))
+      assert.equal(pre().getAttribute('data-snippet'), k)
+      assert.ok(pre().textContent.includes(url), `${k} snippet contains the URL`)
+      for (const re of expect[k]) assert.match(pre().textContent, re, k)
+      if (/^[{]/.test(pre().textContent)) JSON.parse(pre().textContent)
+      assert.deepEqual(text().match(/!![\w.]+/g) ?? [], [], k)
+    }
+    await clickEl(seg.querySelector('[data-client="codex"]'))
+    await clickEl(seg.querySelector('.n2s-mcp-codeact button'))
+    assert.match(copied.at(-1), /mcp_servers\.nl2sql/)
+  })
+
+  await test('test connection: calls mcpSelfTest and shows the steps; failure shows the error', async () => {
+    await clickEl(btn('测试连接'))
+    await settle(30)
+    assert.ok(calls.some(c => c.method === 'mcpSelfTest'))
+    const box = document.querySelector('[data-selftest]')
+    assert.equal(box.getAttribute('data-selftest'), 'ok')
+    assert.match(box.textContent, /发现 3 个工具/); assert.match(box.textContent, /server\/discover/)
+    selfTest = { ok: false, error: 'MCP server is not running', steps: [] }
+    await clickEl(btn('测试连接'))
+    await settle(30)
+    assert.equal(document.querySelector('[data-selftest]').getAttribute('data-selftest'), 'fail')
+    assert.match(document.querySelector('[data-selftest]').textContent, /not running/)
+  })
+
+  await test('token row shows limits; editor sends expiry / allowlist / rate limit payload', async () => {
+    const row = document.querySelector('tr[data-token-id="mt-2"]')
+    assert.match(row.textContent, /到期/); assert.match(row.textContent, /1 个工具/); assert.match(row.textContent, /30 次\/分/)
+    await clickEl(btn('编辑', row))
+    const ed = document.querySelector('.n2s-mcp-editor')
+    assert.ok(ed)
+    assert.equal(ed.querySelector('input[data-tool="query"]').checked, true)
+    await clickEl(ed.querySelector('input[data-tool="list_metrics"]'))
+    await setValue(ed.querySelector('input[aria-label="频率限制（可选）"]'), '60')
+    await setValue(ed.querySelector('input[type=date]'), '2031-01-15')
+    await clickEl(btn('保存', ed))
+    await settle(50)
+    const p = calls.filter(c => c.method === 'updateMcpToken').at(-1).payload
+    assert.equal(p.id, 'mt-2'); assert.equal(p.name, '分析组')
+    assert.deepEqual(p.tools, ['query', 'list_metrics'])
+    assert.equal(p.rateLimit, 60)
+    assert.equal(new Date(p.expiresAt).getFullYear(), 2031)
+    assert.equal(document.querySelector('.n2s-mcp-editor'), null)
+    // all tools + no expiry → nulls
+    await clickEl(btn('编辑', document.querySelector('tr[data-token-id="mt-2"]')))
+    const ed2 = document.querySelector('.n2s-mcp-editor')
+    await clickEl([...ed2.querySelectorAll('label.n2s-check')].find(l => l.textContent.includes('全部工具')).querySelector('input'))
+    await clickEl(btn('不过期', ed2))
+    await setValue(ed2.querySelector('input[aria-label="频率限制（可选）"]'), '')
+    await clickEl(btn('保存', ed2))
+    const p2 = calls.filter(c => c.method === 'updateMcpToken').at(-1).payload
+    assert.equal(p2.tools, null); assert.equal(p2.expiresAt, null); assert.equal(p2.rateLimit, null)
+  })
+
+  await test('call log table renders per token rows and filters by status / token / text', async () => {
+    const tbl = () => document.querySelector('.n2s-mcp-logtable')
+    assert.equal(tbl().querySelectorAll('tbody tr').length, 3)
+    assert.match(tbl().textContent, /query/); assert.match(tbl().textContent, /42/); assert.match(tbl().textContent, /失败/); assert.match(tbl().textContent, /已取消/)
+    const logCard = document.querySelector('.n2s-mcp-log')
+    await clickEl(btn('失败', logCard))
+    await settle(30)
+    assert.deepEqual(calls.filter(c => c.method === 'mcpCallLog').at(-1).payload, { status: 'error', limit: 200 })
+    assert.equal(tbl().querySelectorAll('tbody tr').length, 1)
+    await clickEl(btn('全部', logCard))
+    const sel = logCard.querySelector('select')
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(sel, 'mt-1'); sel.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    await settle(30)
+    assert.deepEqual(calls.filter(c => c.method === 'mcpCallLog').at(-1).payload, { tokenId: 'mt-1', limit: 200 })
+    assert.equal(tbl().querySelectorAll('tbody tr').length, 1)
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(sel, ''); sel.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    await settle(30)
+    await setValue(logCard.querySelector('input[aria-label="按工具或数据源筛选"]'), 'schema')
+    await settle(20)
+    assert.equal(tbl().querySelectorAll('tbody tr').length, 1)
+  })
+
+  await test('rotate secret: confirmation, then the new secret is shown once', async () => {
+    await clickEl(btn('轮换密钥', document.querySelector('tr[data-token-id="mt-2"]')))
+    const ok = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '轮换密钥' && !b.closest('tr'))
+    await clickEl(ok)
+    await settle(50)
+    assert.deepEqual(calls.filter(c => c.method === 'rotateMcpToken').at(-1).payload, { id: 'mt-2' })
+    assert.equal(document.querySelector('[data-mcp-token]').textContent, 'n2s_mcp_ROTATED_SECRET')
+    assert.match(document.querySelector('.n2s-mcp-fresh pre').textContent, /ROTATED_SECRET/)
+    await clickEl(btn('我已保存'))
+  })
+
+  await test('create with limits: expiry, allowlist and rate limit in the createMcpToken payload', async () => {
+    await clickEl(btn('+ 新建令牌'))
+    const form = document.querySelector('.n2s-mcp-form')
+    await setValue(form.querySelector('input'), 'Limited')
+    await clickEl([...form.querySelectorAll('label.n2s-check')].find(l => l.textContent.includes('全部工具')).querySelector('input'))
+    await clickEl(btn('创建令牌', form))
+    assert.match(form.textContent, /请至少勾选一个工具/)
+    await clickEl(form.querySelector('input[data-tool="query"]'))
+    await setValue(form.querySelector('input[aria-label="频率限制（可选）"]'), '10')
+    await clickEl(btn('创建令牌', form))
+    await settle(50)
+    const p = calls.filter(c => c.method === 'createMcpToken').at(-1).payload
+    assert.deepEqual(p, { name: 'Limited', scope: { kind: 'owner' }, tools: ['query'], rateLimit: 10 })
     await clickEl(btn('我已保存'))
   })
 

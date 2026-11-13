@@ -1,6 +1,15 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'mcp.client.claudeCode': 'Claude Code', 'mcp.client.cline': 'Cline', 'mcp.client.windsurf': 'Windsurf', 'mcp.client.codex': 'Codex CLI', 'mcp.client.gemini': 'Gemini CLI', 'mcp.client.zed': 'Zed', 'mcp.client.continue': 'Continue',
+      'mcp.where.claudeCode': '在终端运行（HTTP 直连；下方为 stdio 桥接写法）。', 'mcp.where.cline': '写入 cline_mcp_settings.json（Cline 面板 → MCP Servers → Configure）。', 'mcp.where.windsurf': '写入 Windsurf 的 mcp_config.json（Cascade → MCP → 打开配置文件）。', 'mcp.where.codex': '写入 ~/.codex/config.toml（或项目的 .codex/config.toml）。', 'mcp.where.gemini': '写入 ~/.gemini/settings.json 或项目的 .gemini/settings.json。', 'mcp.where.zed': '写入 Zed 的 settings.json。', 'mcp.where.continue': '保存为工作区 .continue/mcpServers/nl2sql.yaml。',
+      'mcp.test': '测试连接', 'mcp.testOk': '连接正常：发现 {n} 个工具。', 'mcp.testFail': '连接失败：{error}', 'mcp.testFailSteps': '连接测试未通过：',
+      'mcp.expiry': '过期时间（可选）', 'mcp.noExpiry': '不过期', 'mcp.expiryHint': '到期当天结束后令牌失效（401）。', 'mcp.toolsAllow': '允许的工具', 'mcp.allTools': '全部工具', 'mcp.rateLimit': '频率限制（可选）', 'mcp.unlimited': '不限', 'mcp.perMinute': '次 / 分钟，超过返回 429',
+      'mcp.err.tools': '请至少勾选一个工具', 'mcp.edit': '编辑', 'mcp.editTitle': '编辑令牌「{name}」', 'mcp.save': '保存', 'mcp.saved': '已保存',
+      'mcp.rotate': '轮换密钥', 'mcp.rotateConfirm': '轮换令牌「{name}」的密钥？', 'mcp.rotateHint': '旧密钥立即失效，新密钥只显示一次；权限和限制保持不变。', 'mcp.rotated': '已生成新密钥',
+      'mcp.col.limits': '限制', 'mcp.noLimits': '无', 'mcp.expired': '已过期', 'mcp.expiresOn': '{date} 到期', 'mcp.toolsN': '{n} 个工具', 'mcp.rateN': '{n} 次/分',
+      'mcp.callLog': '调用记录', 'mcp.log.token': '令牌', 'mcp.log.allTokens': '全部令牌', 'mcp.log.status': '状态', 'mcp.log.all': '全部', 'mcp.log.filter': '按工具或数据源筛选', 'mcp.log.refresh': '刷新', 'mcp.log.empty': '还没有调用记录', 'mcp.log.time': '时间', 'mcp.log.tool': '工具 / 方法', 'mcp.log.datasource': '数据源', 'mcp.log.ms': '耗时 ms', 'mcp.log.rows': '行数',
+      'hist.status.cancelled': '已取消', 'mcp.log.status.ok': '成功', 'mcp.log.status.error': '失败', 'mcp.log.status.cancelled': '已取消', 'mcp.log.status.rate-limited': '限流',
       'admin.group.insight': "洞察与自动化",
       'admin.group.connect': "集成",
       "fq.title": "数据新鲜度",
@@ -1153,6 +1162,15 @@
       'policy.tablesLabel': '可访问的表',
     }
     const en = {
+      'mcp.client.claudeCode': 'Claude Code', 'mcp.client.cline': 'Cline', 'mcp.client.windsurf': 'Windsurf', 'mcp.client.codex': 'Codex CLI', 'mcp.client.gemini': 'Gemini CLI', 'mcp.client.zed': 'Zed', 'mcp.client.continue': 'Continue',
+      'mcp.where.claudeCode': 'Run in a terminal (HTTP; the stdio bridge variant is below).', 'mcp.where.cline': 'Add to cline_mcp_settings.json (Cline panel → MCP Servers → Configure).', 'mcp.where.windsurf': 'Add to Windsurf\'s mcp_config.json (Cascade → MCP → open config file).', 'mcp.where.codex': 'Add to ~/.codex/config.toml (or the project\'s .codex/config.toml).', 'mcp.where.gemini': 'Add to ~/.gemini/settings.json or the project\'s .gemini/settings.json.', 'mcp.where.zed': 'Add to Zed\'s settings.json.', 'mcp.where.continue': 'Save as .continue/mcpServers/nl2sql.yaml in the workspace.',
+      'mcp.test': 'Test connection', 'mcp.testOk': 'Connected: {n} tools discovered.', 'mcp.testFail': 'Connection failed: {error}', 'mcp.testFailSteps': 'Connection test failed:',
+      'mcp.expiry': 'Expires (optional)', 'mcp.noExpiry': 'Never', 'mcp.expiryHint': 'The token stops working (401) after the end of that day.', 'mcp.toolsAllow': 'Allowed tools', 'mcp.allTools': 'All tools', 'mcp.rateLimit': 'Rate limit (optional)', 'mcp.unlimited': 'unlimited', 'mcp.perMinute': 'requests / minute; above it → 429',
+      'mcp.err.tools': 'Select at least one tool', 'mcp.edit': 'Edit', 'mcp.editTitle': 'Edit token "{name}"', 'mcp.save': 'Save', 'mcp.saved': 'Saved',
+      'mcp.rotate': 'Rotate secret', 'mcp.rotateConfirm': 'Rotate the secret of token "{name}"?', 'mcp.rotateHint': 'The old secret stops working at once; the new one is shown once. Scope and limits stay the same.', 'mcp.rotated': 'New secret generated',
+      'mcp.col.limits': 'Limits', 'mcp.noLimits': 'none', 'mcp.expired': 'Expired', 'mcp.expiresOn': 'expires {date}', 'mcp.toolsN': '{n} tools', 'mcp.rateN': '{n}/min',
+      'mcp.callLog': 'Call log', 'mcp.log.token': 'Token', 'mcp.log.allTokens': 'All tokens', 'mcp.log.status': 'Status', 'mcp.log.all': 'All', 'mcp.log.filter': 'Filter by tool or data source', 'mcp.log.refresh': 'Refresh', 'mcp.log.empty': 'No calls yet', 'mcp.log.time': 'Time', 'mcp.log.tool': 'Tool / method', 'mcp.log.datasource': 'Data source', 'mcp.log.ms': 'ms', 'mcp.log.rows': 'Rows',
+      'hist.status.cancelled': 'Cancelled', 'mcp.log.status.ok': 'OK', 'mcp.log.status.error': 'Failed', 'mcp.log.status.cancelled': 'Cancelled', 'mcp.log.status.rate-limited': 'Rate limited',
       'admin.group.insight': "Insight & automation",
       'admin.group.connect': "Integrations",
       "fq.title": "Data freshness",

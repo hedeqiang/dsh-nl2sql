@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-13
+
+### Added
+- **MCP streaming and progress:** long tool calls stream over SSE with `notifications/progress` (admitted → running → rows fetched → formatting); the stdio bridge forwards them.
+- **MCP cancellation:** `notifications/cancelled` (or closing the stream on 2026-07-28) stops the request; MySQL queries are killed server-side, other engines drop the result; the audit records `cancelled`.
+- **MCP resources:** knowledge, metrics, data freshness, dashboards and query results (privacy-aware CSV); subscriptions with `resources/updated` and `list_changed` notifications; cursor pagination.
+- **MCP tools:** annotations, `outputSchema` with structured content and `resource_link` items; new `list_metrics`, `list_dashboards`, `run_dashboard`, `data_freshness`, `explain_sql`.
+- **MCP prompts and completion:** `analyze_table`, `compare_periods`, `reconcile_sources`; argument completion for data sources, tables, metrics and periods, scoped to the token; log notifications for truncation, stale data and redaction.
+- **Tokens:** expiry, tool allowlists, rate limits (429 with Retry-After), secret rotation and a per-token call log.
+- **Admin page:** setup guides for Claude Desktop, Claude Code, Cursor, VS Code, Cline, Windsurf, Codex CLI, Gemini CLI, Zed and Continue; a connection self-test; token editor; call log.
+- Query history shows cancelled queries.
+
 ## [0.13.1] - 2026-11-12
 
 ### Fixed
@@ -127,7 +139,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.1...v0.12.2

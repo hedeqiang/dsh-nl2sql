@@ -193,10 +193,12 @@ class MysqlDriver {
    * once that many arrived the pooled connection is destroyed (never returned
    * to the pool mid-result), which also aborts the statement on the server.
    */
-  async stream(sql, { timeoutMs, maxRows }) {
+  async stream(sql, { timeoutMs, maxRows, signal }) {
     const limit = Number.isFinite(maxRows) && maxRows >= 0 ? maxRows + 1 : Infinity
+    if (signal?.aborted) throw new DriverError('query/cancelled', '查询已取消')
     const conn = await this.pool.getConnection()
     const core = conn.connection
+    const self = this
     let destroyed = false
     const destroy = () => { if (!destroyed) { destroyed = true; try { conn.destroy() } catch {} } }
     // Late protocol errors after an intentional destroy must not crash the process.
@@ -230,8 +232,19 @@ class MysqlDriver {
         q.on('end', () => {
           if (settled) return
           settled = true
+          signal?.removeEventListener('abort', onAbort)
           resolve({ rows, fields, aborted: false })
         })
+        // Cancellation (MCP notifications/cancelled): KILL QUERY on the server, then drop the connection.
+        function onAbort() {
+          if (settled) return
+          settled = true
+          const threadId = core.threadId
+          destroy()
+          self.pool.query(`KILL QUERY ${Number(threadId)}`).catch(() => {})
+          reject(new DriverError('query/cancelled', '查询已取消'))
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
       })
       if (!out.aborted) {
         await conn.query('ROLLBACK').catch(() => {})
@@ -254,8 +267,8 @@ class MysqlDriver {
     }
   }
 
-  async query(sql, { timeoutMs, maxRows }) {
-    const { rows, fields } = await this.stream(sql, { timeoutMs, maxRows })
+  async query(sql, { timeoutMs, maxRows, signal }) {
+    const { rows, fields } = await this.stream(sql, { timeoutMs, maxRows, signal })
     return {
       columns: fields.map((f, i) => ({
         name: f.name,

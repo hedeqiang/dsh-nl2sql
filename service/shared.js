@@ -4,7 +4,13 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { DIALECTS, describeError } from '../drivers.js'
 import { sqliteDialectHints } from '../sqlite-driver.js'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
+/**
+ * Per-call context for long requests (MCP tools/call): { signal?: AbortSignal, phase?(name, info) }.
+ * runQuery reports phases and passes the signal to drivers that can cancel a running statement.
+ */
+export const callContext = new AsyncLocalStorage()
 
 export const SUPPORTED_TYPES = Object.keys(DIALECTS)
 
@@ -231,6 +237,9 @@ RECORD_REF.bitableRun = 'syncId'
 // Daily digest runs (service/proactive.js).
 RECORD_LIMITS.digestRun = 1000
 RECORD_REF.digestRun = 'digestId'
+// MCP per-token call log (service/mcp.js): time, method/tool, data source, ms, status, rows.
+RECORD_LIMITS.mcpCall = 5000
+RECORD_REF.mcpCall = 'tokenId'
 
 /**
  * Growing logs (audit history, feedback, push deliveries, alert events, admin

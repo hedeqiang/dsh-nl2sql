@@ -9,7 +9,7 @@ import { admitSql, prepareSql, stripSql } from '../sql-guard.js'
 import { cacheKey } from '../store.js'
 import { createHash } from 'node:crypto'
 import { writeXlsx } from '../xlsx.js'
-import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, UserError, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
+import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, UserError, callContext, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
 
 export const methods = {
   // ---------------------------------------------------------------- query
@@ -36,6 +36,7 @@ export const methods = {
       await this.save()
       throw new UserError('nl2sql/access-denied', denied)
     }
+    callContext.getStore()?.phase?.('admitted', { datasource: ds.name, title })
     let appliedFilters = []
     if (filters?.length) {
       let f
@@ -108,15 +109,22 @@ export const methods = {
       }
     }
     const started = Date.now()
+    // Optional per-call context (MCP tools/call): progress phases and cancellation.
+    const call = callContext.getStore()
+    call?.phase?.('running', { datasource: ds.name, title })
     let res
     try {
-      res = await this.withDriver(ds, d => d.query(prepared, { timeoutMs: settings.timeoutMs, maxRows: settings.maxRows }))
+      if (call?.signal?.aborted) throw new UserError('query/cancelled', '查询已取消')
+      res = await this.withDriver(ds, d => d.query(prepared, { timeoutMs: settings.timeoutMs, maxRows: settings.maxRows, ...(call?.signal ? { signal: call.signal } : {}) }))
+      if (call?.signal?.aborted) throw new UserError('query/cancelled', '查询已取消')
     } catch (error) {
-      this.audit({ ds, sessionId, source, sql: admitted.sql, title, status: 'error', error: error.message, elapsedMs: Date.now() - started, actor })
+      const cancelled = error.code === 'query/cancelled' || call?.signal?.aborted
+      this.audit({ ds, sessionId, source, sql: admitted.sql, title, status: cancelled ? 'cancelled' : 'error', error: cancelled ? 'cancelled by the client' : error.message, elapsedMs: Date.now() - started, actor })
       await this.save()
       throw error
     }
     const elapsedMs = Date.now() - started
+    call?.phase?.('fetched', { datasource: ds.name, title, rows: Math.min(res.rows.length, settings.maxRows) })
     const truncated = res.rows.length > settings.maxRows
     let cells = truncated ? res.rows.slice(0, settings.maxRows) : res.rows
     const schema = fullSchema

@@ -514,6 +514,17 @@
 .n2s-fq-summary .n2s-fq-score{min-width:48px;height:34px;font-size:17px}
 .n2s-adminnav-group{margin:14px 12px 4px;font-size:11.5px;letter-spacing:.02em;color:var(--n2s-faint)}
 .n2s-adminnav-sep{height:.5px;margin:10px 12px;background:var(--n2s-line)}
+.n2s-mcp-tabs{flex-wrap:wrap}
+.n2s-mcp-limits{display:grid;gap:12px;padding-top:4px;border-top:1px dashed var(--n2s-border)}
+.n2s-mcp-toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;margin-top:4px;font-size:12.5px}
+.n2s-mcp-editor{display:grid;gap:12px;border-color:var(--n2s-accent)}
+.n2s-mcp-actions{text-align:right;white-space:nowrap}
+.n2s-mcp-actions .n2s-btn{margin-left:4px}
+.n2s-mcp-tokens .n2s-badge{margin:0 4px 2px 0}
+.n2s-mcp-selftest{margin-top:6px}
+.n2s-mcp-steps{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+.n2s-mcp-log .n2s-select{max-width:200px}
+.n2s-mcp-logtable td{vertical-align:middle}
 /* ---- dashboard v2 ---- */
 .n2s-srcbadge{display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
 .n2s-seg.small button{height:26px;padding:0 10px;font-size:12px}

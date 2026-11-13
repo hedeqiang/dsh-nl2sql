@@ -223,9 +223,12 @@ try {
   await test('resources/list + resources/read: schema per visible data source; hidden tables not exposed', async () => {
     const l = await rpc('resources/list', undefined, { token: scoped.token })
     const res = l.json.result.resources
-    assert.equal(res.length, 1)
-    assert.equal(res[0].uri, `nl2sql://datasource/${ds.id}/schema`)
-    const r = await rpc('resources/read', { uri: res[0].uri }, { token: scoped.token })
+    const schemaRes = res.filter(r => r.uri.endsWith('/schema'))
+    assert.equal(schemaRes.length, 1, 'one schema resource per visible data source')
+    assert.equal(schemaRes[0].uri, `nl2sql://datasource/${ds.id}/schema`)
+    assert.ok(res.some(r => r.uri === `nl2sql://datasource/${ds.id}/knowledge`))
+    assert.ok(res.some(r => r.uri === `nl2sql://datasource/${ds.id}/metrics`))
+    const r = await rpc('resources/read', { uri: schemaRes[0].uri }, { token: scoped.token })
     assert.equal(r.json.result.contents[0].mimeType, 'text/plain')
     assert.match(r.json.result.contents[0].text, /blockchain_transactions/)
     assert.doesNotMatch(r.json.result.contents[0].text, /callback_configs/)
