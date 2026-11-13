@@ -16,7 +16,7 @@
  */
 import { createHash, createHmac } from 'node:crypto'
 import { ChannelError, request } from './http.js'
-import { MD_TABLE, labelValue, cellText, chartOption, chartable, dualAxis, escapeLarkMd, kpiText, isKpi, needsAttachment, num, oneLine, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
+import { MD_TABLE, labelValue, comparisonShape, displayValue, prettyColumn, cellText, chartOption, chartable, dualAxis, escapeLarkMd, kpiText, isKpi, needsAttachment, num, oneLine, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
 
 export { ChannelError, ChannelError as ImError, chartOption, chartable, dualAxis, renderChartPng }
 
@@ -695,6 +695,17 @@ async function uploadFile(channel, secrets, buf, fileName, fileType = 'xls') {
 
 const CARD_LIMIT = 28000
 
+function comparisonTable(cmp) {
+  const hasChange = cmp.metrics.some(m => m.change)
+  const cols = ['指标', prettyColumn(cmp.periods[0]), prettyColumn(cmp.periods[1]), ...(hasChange ? ['变化'] : [])]
+  return {
+    tag: 'table', page_size: Math.min(10, Math.max(1, cmp.metrics.length)), row_height: 'low',
+    header_style: { background_style: 'grey', bold: true, text_size: 'normal' },
+    columns: cols.map((n, i) => ({ name: `c${i}`, display_name: n, data_type: 'text', width: 'auto', ...(i ? { horizontal_align: 'right' } : {}) })),
+    rows: cmp.metrics.map(m => ({ c0: oneLine(m.name), c1: oneLine(displayValue(m.col, m.a) || '—'), c2: oneLine(displayValue(m.col, m.b) || '—'), ...(hasChange ? { c3: m.change ? oneLine(displayValue(m.change.col, m.change.v)) : '—' } : {}) })),
+  }
+}
+
 function tableElement(result, maxRows) {
   const cols = result.columns.slice(0, 8)
   return {
@@ -703,7 +714,7 @@ function tableElement(result, maxRows) {
     page_size: Math.min(10, Math.max(1, Math.min(maxRows, result.rows.length))),
     row_height: 'low',
     header_style: { background_style: 'grey', bold: true, text_size: 'normal' },
-    columns: cols.map((c, i) => { const num = c.kind === 'number' && !c.labels; return { name: `c${i}`, display_name: c.name, data_type: num ? 'number' : 'text', ...(num ? { format: { separator: true } } : {}), width: 'auto' } }),
+    columns: cols.map((c, i) => { const num = c.kind === 'number' && !c.labels; return { name: `c${i}`, display_name: prettyColumn(c.name), data_type: num ? 'number' : 'text', ...(num ? { format: { separator: true } } : {}), width: 'auto' } }),
     // NULL / '' numbers stay empty (Number(null) would show 0); line breaks would break rows.
     rows: result.rows.slice(0, maxRows).map(r => Object.fromEntries(cols.flatMap((c, i) => {
       const v = r[i]
@@ -857,6 +868,12 @@ export function buildCard(message, { maxRows = 50, charts = true, actions = true
     const nativeChart = charts && chartCount < 5 && chartable(r) ? chartElement(r) : undefined
     if (r.rows.length === 0) {
       elements.push({ tag: 'markdown', content: '<font color=\'grey\'>无数据</font>' })
+    } else if (comparisonShape(r)) {
+      // One row of period pairs → a native comparison table (指标 / 上周 / 前周 / 变化).
+      const cmp = comparisonShape(r)
+      elements.push(comparisonTable(cmp))
+      tables++
+      if (cmp.extra.length) elements.push({ tag: 'markdown', content: cmp.extra.map(x => `**${escapeLarkMd(prettyColumn(x.col.name))}**：${escapeLarkMd(oneLine(displayValue(x.col, x.v) || '—'))}`).join('　｜　') })
     } else if (isKpi(r)) {
       elements.push({ tag: 'markdown', content: kpiText(r, { escape: escapeLarkMd }) })
     } else if (nativeChart) {

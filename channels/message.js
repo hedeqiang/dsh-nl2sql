@@ -14,6 +14,92 @@ export function num(v) {
   return v === null || v === undefined || v === '' ? null : Number(v)
 }
 
+/**
+ * A number as people read it in a message: thousands separators, at most 2 decimals
+ * (trailing zeros dropped): 690751.94 → "690,751.94", 1258 → "1,258". NULL / '' → ''.
+ * Use fmtNum (万 / 亿) only where space is tight (chart axes).
+ */
+export function fmtPlain(v, { decimals = 2 } = {}) {
+  if (v === null || v === undefined || v === '') return ''
+  const n = Number(v)
+  if (!Number.isFinite(n)) return String(v ?? '')
+  return n.toLocaleString('en-US', { maximumFractionDigits: Math.abs(n) >= 1 ? decimals : 6 })
+}
+
+/** Percent-like columns: name ends with _pct / pct / 率 / 占比 / 环比 / 同比 / percent. */
+export function isPercentColumn(name) {
+  return /(_?pct|percent|percentage|率|占比|环比|同比|增长率|增幅|降幅)$/i.test(String(name ?? '').trim())
+}
+
+/**
+ * A readable label for a column name: snake_case technical suffixes are removed
+ * (`订单环比_pct` → `订单环比`, `折算金额_U` → `折算金额（U）`), underscores become spaces.
+ */
+export function prettyColumn(name) {
+  let s = String(name ?? '').trim()
+  s = s.replace(/_?(pct|percent)$/i, '')
+  s = s.replace(/_(u|usd|usdt|cny|rmb|元|万)$/i, (_, u) => `（${u.toUpperCase() === 'U' ? 'U' : u.toUpperCase()}）`)
+  if (/[\u4e00-\u9fa5]/.test(s)) s = s.replace(/_/g, '')
+  else s = s.replace(/_/g, ' ')
+  return s || String(name ?? '')
+}
+
+/** A value for display in a message (labels, percents, codes, plain numbers). */
+export function displayValue(column, v, { max = 80 } = {}) {
+  const labelled = labelValue(column, v)
+  if (labelled) return labelled
+  if (v === null || v === undefined || v === '') return ''
+  if (column?.kind === 'number' && !isCode(column, v)) {
+    const n = Number(v)
+    if (Number.isFinite(n) && isPercentColumn(column.name)) return `${n > 0 && /环比|同比|增长|变化|change|delta/i.test(column.name) ? '+' : ''}${fmtPlain(n)}%`
+    return fmtPlain(v)
+  }
+  return cellText(v, max)
+}
+
+/**
+ * A one-row result whose columns come in period pairs (上周X / 前周X, 本月X / 上月X, 今年X / 去年X,
+ * current_X / previous_X …) plus optional change columns: → { periods: [a, b], metrics: [{ name, a, b, change? }] }.
+ * Returns null when the row does not have that shape (fewer than 2 pairs).
+ */
+export function comparisonShape(result) {
+  if (result?.rows?.length !== 1) return null
+  const cols = result.columns ?? []
+  const PAIRS = [['本周', '上周'], ['上周', '前周'], ['本月', '上月'], ['上月', '前月'], ['今年', '去年'], ['今日', '昨日'], ['今天', '昨天'], ['昨天', '前天'], ['本期', '上期'], ['current_', 'previous_'], ['cur_', 'prev_'], ['this_', 'last_']]
+  for (const [a, b] of PAIRS) {
+    const strip = (n, p) => (n.startsWith(p) ? n.slice(p.length) : null)
+    const aCols = cols.map((c, i) => ({ c, i, k: strip(c.name, a) })).filter(x => x.k)
+    const pairs = aCols.map(x => ({ ...x, j: cols.findIndex(c => c.name === `${b}${x.k}`) })).filter(x => x.j >= 0)
+    if (pairs.length < 2) continue
+    const used = new Set(pairs.flatMap(p => [p.i, p.j]))
+    const rest = cols.map((c, i) => ({ c, i })).filter(x => !used.has(x.i))
+    const row = result.rows[0]
+    const metrics = pairs.map(p => {
+      // A change column for this metric: same key with 环比 / 同比 / 变化 / change / pct, e.g. 订单环比_pct for 充值订单数.
+      return { name: prettyColumn(p.k), col: p.c, a: row[p.i], b: row[p.j] }
+    })
+    // Remaining columns that look like changes are matched by shared characters; others are listed after the table.
+    const changes = rest.filter(x => isPercentColumn(x.c.name) || /环比|同比|变化|增长|change|delta/i.test(x.c.name))
+    // Synonym groups: a change column names its metric loosely (金额环比 ↔ 充值折算（U）, 订单环比 ↔ 充值订单数).
+    const GROUPS = [/金额|折算|总额|amount|total|gmv|sum/i, /单均|均价|平均|avg|average|per/i, /订单|单数|笔数|orders?|count|cnt/i, /记录|次数|records?/i, /用户|人数|users?/i]
+    const groupOf = (txt) => GROUPS.findIndex(re => re.test(txt))
+    const score = (key, m) => {
+      const name = m.name.replace(/（.*?）/g, '')
+      if (key && (name.includes(key) || key.includes(name))) return 3
+      // 单均 must not match the generic 订单 group: check the most specific group first.
+      const gk = groupOf(key), gm = groupOf(name)
+      return gk >= 0 && gk === gm ? 2 : 0
+    }
+    for (const ch of changes) {
+      const key = prettyColumn(ch.c.name).replace(/环比|同比|变化|增长率?|change|delta/gi, '').trim()
+      const best = metrics.filter(m => !m.change).map(m => ({ m, s: score(key, m) })).filter(x => x.s > 0).sort((x, y) => y.s - x.s)[0]
+      if (best) { best.m.change = { col: ch.c, v: row[ch.i] }; ch.matched = true }
+    }
+    return { periods: [a.replace(/_$/, ''), b.replace(/_$/, '')], metrics, extra: rest.filter(x => !x.matched).map(x => ({ col: x.c, v: row[x.i] })) }
+  }
+  return null
+}
+
 /** Compact number: 1.23亿 / 4.56万 / integers as-is / two decimals. NULL / '' → ''. */
 export function fmtNum(v) {
   if (v === null || v === undefined || v === '') return ''
@@ -61,16 +147,18 @@ export function defangMd(s) {
  * A KPI-style result (one row) as `**col**：value ｜ …` Markdown. NULL shows as '—'.
  * `escape` is applied to data-derived text (column names and values).
  */
-export function kpiText(result, { separator = '　｜　', bold = true, escape = defangMd, vertical } = {}) {
+export function kpiText(result, { separator = '　｜　', bold = true, escape = defangMd, vertical, tables = true } = {}) {
   const row = result.rows?.[0] ?? []
+  // One row of period pairs (上周X / 前周X …): a small comparison table reads far better than a field list.
+  const cmp = tables ? comparisonShape(result) : null
+  if (cmp) return comparisonMarkdown(cmp, { escape, bold })
   // A single record with several fields reads better as one field per line ("字段：值").
   const listMode = vertical ?? (result.columns.length > 3 || result.columns.some((c, i) => String(row[i] ?? '').length > 24))
   return result.columns.map((c, i) => {
-    const labelled = labelValue(c, row[i])
     // Long identifiers (order / trade numbers) are shown in full in list mode so they can be copied.
-    const raw = labelled ?? (c.kind === 'number' && !isCode(c, row[i]) ? fmtNum(row[i]) : cellText(row[i], listMode ? 200 : 80))
+    const raw = displayValue(c, row[i], { max: listMode ? 200 : 80 })
     const value = raw === '' ? '—' : escape(oneLine(raw))
-    const name = escape(oneLine(c.name))
+    const name = escape(oneLine(prettyColumn(c.name)))
     return `${bold ? `**${name}**` : name}：${value}`
   }).join(listMode ? '\n' : separator)
 }
@@ -90,6 +178,17 @@ function isCode(column, v) {
   if (column?.labels) return true
   const name = String(column?.name ?? '')
   return /(^|_)(id|no|code|num|number|status|type|state|seq|hash)$|编号|单号|订单号|状态|类型/i.test(name) || (typeof v === 'string' && /^\d{12,}$/.test(v))
+}
+
+/** A comparison shape as a Markdown table: 指标 | 上周 | 前周 | 环比, extra fields listed after. */
+export function comparisonMarkdown(cmp, { escape = defangMd, bold = true } = {}) {
+  const hasChange = cmp.metrics.some(m => m.change)
+  const head = ['指标', cmp.periods[0], cmp.periods[1], ...(hasChange ? ['变化'] : [])].map(x => escape(prettyColumn(x)))
+  const cell = (s) => escape(oneLine(s === '' ? '—' : s)).replace(/\|/g, '｜')
+  const lines = [`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`]
+  for (const m of cmp.metrics) lines.push(`| ${[cell(m.name), cell(displayValue(m.col, m.a)), cell(displayValue(m.col, m.b)), ...(hasChange ? [cell(m.change ? displayValue(m.change.col, m.change.v) : '')] : [])].join(' | ')} |`)
+  const extra = cmp.extra.map(x => `${bold ? `**${escape(prettyColumn(x.col.name))}**` : escape(prettyColumn(x.col.name))}：${escape(oneLine(displayValue(x.col, x.v) || '—'))}`)
+  return [lines.join('\n'), ...(extra.length ? ['', extra.join('　｜　')] : [])].join('\n')
 }
 
 /** True when the result should be shown as KPI / field-list text rather than a table/chart. */

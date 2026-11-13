@@ -101,7 +101,7 @@ await test('message: fmtNum, cellText, kpiText, chartable, chartOption, messageA
   assert.equal(message.fmtNum(1.234), '1.23')
   assert.equal(message.cellText('x'.repeat(100)).length, 80)
   assert.equal(message.cellText(null), '')
-  assert.equal(message.kpiText({ columns: [{ name: 'n', kind: 'number' }], rows: [[20000]] }), '**n**：2.00万')
+  assert.equal(message.kpiText({ columns: [{ name: 'n', kind: 'number' }], rows: [[20000]] }), '**n**：20,000', 'messages show full numbers with separators, not 万')
   assert.equal(message.chartable(result), true)
   assert.equal(message.chartable({ ...result, chart: { type: 'table' } }), false)
   const opt = message.chartOption(result)

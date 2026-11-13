@@ -180,8 +180,10 @@ try {
     assert.ok(h, 'drill audited with source larkbot')
     assert.match(h.sql, /GROUP BY `?chain_type`?/i)
     assert.equal(h.actor?.name, '甲')
-    const dl = await call('listDeliveries', { limit: 5 })
-    assert.ok(dl.some(d => d.source === 'larkbot' && d.title === '拆分：chain_type' && d.status === 'ok'))
+    // The delivery is recorded right after the reply is posted: wait for it instead of racing.
+    let dl = []
+    for (const t0 = Date.now(); Date.now() - t0 < 5000; await sleep(50)) { dl = await call('listDeliveries', { limit: 5 }); if (dl.some(d => d.title === '拆分：chain_type')) break }
+    assert.ok(dl.some(d => d.source === 'larkbot' && d.title === '拆分：chain_type' && d.status === 'ok'), JSON.stringify(dl.map(d => d.title)))
   })
 
   await test('rate limit: a second click within 2 s is refused', async () => {
