@@ -1,5 +1,25 @@
     // ----------------------------------------------------------- charts
 
+    // ECharts is loaded in a sandboxed wrapper (lib/client.echarts.js) whose `window` is an empty
+    // object, so it cannot read the screen's devicePixelRatio and would draw at 1x (blurry on
+    // Retina / HiDPI). Every chart passes the real ratio explicitly and re-inits when it changes
+    // (moving between screens, browser zoom).
+    const chartDpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1))
+    function initChart(echarts, el, opts = {}) {
+      return echarts.init(el, null, { renderer: 'canvas', devicePixelRatio: chartDpr(), ...opts })
+    }
+    /** Call `onChange` when the device pixel ratio changes; returns a cleanup. */
+    function watchDpr(onChange) {
+      if (typeof window === 'undefined' || !window.matchMedia) return () => {}
+      let mq
+      const listen = () => {
+        mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+        mq.addEventListener?.('change', handler, { once: true })
+      }
+      const handler = () => { onChange(); listen() }
+      listen()
+      return () => mq?.removeEventListener?.('change', handler)
+    }
     let echartsPromise
     function loadEcharts() {
       echartsPromise ??= require.async('./client.echarts.js')
@@ -106,17 +126,27 @@
       useEffect(() => {
         let disposed = false
         let observer
+        let stopDpr
         loadEcharts().then((echarts) => {
           if (disposed || !ref.current) return
-          instance.current = echarts.init(ref.current, null, { renderer: 'canvas' })
-          instance.current.on('click', (p) => { if (pointRef.current && p.name !== undefined && p.name !== '') pointRef.current(p.name) })
+          const create = () => {
+            const prev = instance.current
+            const option = prev?.getOption?.()
+            prev?.dispose()
+            instance.current = initChart(echarts, ref.current)
+            instance.current.on('click', (p) => { if (pointRef.current && p.name !== undefined && p.name !== '') pointRef.current(p.name) })
+            if (option) instance.current.setOption(option, true)
+            onInstance?.(instance.current)
+          }
+          create()
+          stopDpr = watchDpr(() => { if (!disposed && ref.current) create() })
           observer = new ResizeObserver(() => instance.current?.resize())
           observer.observe(ref.current)
           setReady(true)
-          onInstance?.(instance.current)
         }, (e) => setError(e.message))
         return () => {
           disposed = true
+          stopDpr?.()
           observer?.disconnect()
           instance.current?.dispose()
           instance.current = null
@@ -259,7 +289,7 @@
       const [flash, setFlash] = useFlash()
       const copySql = () => { navigator.clipboard?.writeText(result.sql); setFlash(t('result.copied')) }
       const exportPng = () => {
-        const url = chartInstance?.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: cssVar(document.body, '--dsw-alias-bg-base', '#fff') })
+        const url = chartInstance?.getDataURL({ type: 'png', pixelRatio: Math.max(2, chartDpr()), backgroundColor: cssVar(document.body, '--dsw-alias-bg-base', '#fff') })
         if (url) fetch(url).then(r => r.blob()).then(b => download(`${safeName(result.title)}.png`, b))
       }
       const isChart = chart.type !== 'table' && chart.type !== 'kpi'

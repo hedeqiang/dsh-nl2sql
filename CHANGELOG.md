@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-13
+
+### Fixed
+- Charts, the ER graph and forecast charts were blurry on Retina / HiDPI screens: ECharts runs in a sandboxed chunk without access to the real `window`, so it rendered at 1×. Charts now render at the screen's device pixel ratio (re-rendering when it changes, e.g. moving to another monitor or zooming), and PNG export uses at least 2×.
+
 ## [0.14.0] - 2026-11-13
 
 ### Added
@@ -139,7 +144,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.12.2...v0.13.0

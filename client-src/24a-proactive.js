@@ -63,7 +63,7 @@
         let observer
         loadEcharts().then((echarts) => {
           if (disposed || !ref.current) return
-          inst.current = echarts.init(ref.current, null, { renderer: 'canvas' })
+          inst.current = initChart(echarts, ref.current)
           observer = new ResizeObserver(() => inst.current?.resize())
           observer.observe(ref.current)
           try { inst.current.setOption(proForecastOption(forecast, ref.current, t), true) } catch (e) { setError(e.message) }

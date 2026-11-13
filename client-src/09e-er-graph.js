@@ -10,7 +10,7 @@
         let observer
         loadEcharts().then((echarts) => {
           if (disposed || !ref.current) return
-          chart = echarts.init(ref.current, null, { renderer: 'canvas' })
+          chart = initChart(echarts, ref.current)
           observer = new ResizeObserver(() => chart?.resize())
           observer.observe(ref.current)
           const el = ref.current
