@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-13
+
+### Added
+- **Milestone announcements (破纪录播报):** a new admin section under *洞察与自动化*. Each morning a rule checks its metrics for yesterday and posts one celebration card with a 60-day trend when it finds:
+  - a daily record — the best day of the last 400 days, or of all history when the data is shorter (at least 30 days of data), noting "first time above 1,000 / 5,000 …";
+  - a monthly record, checked on the last day of the month (additive metrics only; partial months are skipped);
+  - a growth streak of *N* days, announced on day *N*, 2*N*, …;
+  - the running total passing a round mark, automatic (powers of ten) or a fixed step (additive metrics only).
+  Rules can treat lower values as better, @all on news, and write in Chinese or English. Days without news send nothing. *预览昨天* shows today's check without sending, and *回看 30 天* replays the last 30 days to show how often a rule would post.
+- The running total uses the total before the 400-day window, cached on the rule and re-read only when the metric definition changes, so the daily check does not scan the whole table.
+
+### Changed
+- `client-src/` is organised by role (`core/`, `pages/`, `channels/`, `admin/`, `host/`, `features/`, with `prelude.js` and `apply.js` at the top) instead of numeric file-name prefixes. `scripts/build-client.mjs` concatenates an explicit `SECTIONS` list and fails on unlisted or missing files. The built `lib/client.js` is unchanged apart from comments.
+
 ## [0.16.0] - 2026-11-13
 
 ### Added
@@ -233,7 +247,9 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.3...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.3...v0.16.0
 [0.15.3]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.0...v0.15.1
