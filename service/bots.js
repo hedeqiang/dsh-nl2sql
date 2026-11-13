@@ -392,7 +392,7 @@ export const methods = {
       const started = Date.now()
       // Another message of this conversation may have created the session meanwhile.
       const latest = convs[key]
-      if (latest?.sessionId && !conv.sessionId) conv.sessionId = latest.sessionId
+      if (latest?.sessionId && !conv.sessionId) { conv.sessionId = latest.sessionId; if (latest.group) conv.group = latest.group }
       const prepare = async (sessionId) => {
         conv.sessionId = sessionId
         conv.datasourceId = ds.id

@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.8] - 2026-11-13
+
+### Fixed
+- Two messages arriving at the same time in a chat that predates channel grouping could split into two sessions, so the second message lost the conversation context. They now share the new grouped session. (0.14.7 was published with this failing test.)
+
 ## [0.14.7] - 2026-11-13
 
 ### Changed
@@ -179,7 +184,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.7...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.8...HEAD
+[0.14.8]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.7...v0.14.8
 [0.14.7]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.6...v0.14.7
 [0.14.6]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.5...v0.14.6
 [0.14.5]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.4...v0.14.5
