@@ -167,7 +167,10 @@ export const methods = {
       mentionAll: Boolean(message.mentionAll ?? /<at\s+id\s*=\s*["']?all["']?\s*>/i.test(body)),
       footer: message.footer ?? `数据问答 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
     }
-    if (caps.files && (attachFull ?? c.attachFull ?? true)) {
+    // Groups that forbid full-data attachments (chat policy) get the card only.
+    const chatMember = (this.state.users ?? []).find(u => u.kind === 'chat' && (u.identities ?? []).some(i => i.platform === c.platform && i.id === String(chatId)))
+    const noAttach = Boolean(this.chatPolicyOf?.(chatMember)?.noAttachments)
+    if (caps.files && !noAttach && (attachFull ?? c.attachFull ?? true)) {
       const shown = caps.tableRows ?? 10
       const idx = out.results.map((r, i) => (needsAttachment(r, shown) ? i : -1)).filter(i => i >= 0)
       if (idx.length) {

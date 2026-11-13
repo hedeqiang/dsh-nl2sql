@@ -232,7 +232,8 @@ try {
 
   // ------------------------------------------------------------ Lark turn anchoring
   await test('lark: each message gets its own turn answer, also for concurrent messages', async () => {
-    await call('saveUser', { kind: 'chat', name: 'G', larkChatId: 'oc_g', role: 'analyst', allDatasources: true })
+    // New groups default to registered members only; this test is about turn routing, so allow everyone.
+    await call('saveUser', { kind: 'chat', name: 'G', larkChatId: 'oc_g', role: 'analyst', allDatasources: true, chatPolicy: { askers: 'all' } })
     service.larkCreds = { appId: 'cli_x', appSecret: 's', domain: 'feishu', baseUrl: 'http://127.0.0.1:1' }
     const replies = []
     service.state.larkBot = { enabled: false, sessionScope: 'chat', allowP2p: true }

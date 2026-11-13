@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-13
+
+### Added
+- **Who can ask in a group:** each registered group chat can set who may ask the bot — everyone in the group, registered members only, or listed members only — plus a blocked list; how a person's own scope combines with the group's (stricter of the two, or the group decides); rate limits per person per minute and per group per hour; no full-data Excel attachments; read-only mode (everyone asks as a viewer). Configure per group in **Members & access**, or follow the default in **Settings → Channels & bots**. New groups default to "registered members only"; groups registered earlier keep "everyone in the group". The member list shows each group's policy.
+
 ## [0.14.9] - 2026-11-13
 
 ### Security
@@ -189,7 +194,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.9...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.9...v0.15.0
 [0.14.9]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.8...v0.14.9
 [0.14.8]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.7...v0.14.8
 [0.14.7]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.6...v0.14.7

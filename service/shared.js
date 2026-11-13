@@ -31,6 +31,8 @@ export const DEFAULT_SETTINGS = {
   cacheTtlSec: 300, // identical query reuse window for dashboards / reruns (0 = off)
   schemaWatch: true, // detect schema changes on re-analysis
   botDefaultRole: 'none', // role for unknown IM bot users: none | viewer | analyst (legacy name: larkDefaultRole)
+  // Default "who may ask in a group" policy for newly registered groups (service/access.js normalizeChatPolicy).
+  chatPolicyDefault: { askers: 'members', listed: [], blocked: [], merge: 'strict', perUserPerMinute: 0, perChatPerHour: 0, noAttachments: false, readOnly: false },
   schemaOverviewMax: 80, // above this many tables the schema overview lists names only, plus the most relevant tables in full
   schemaOverviewTop: 15, // tables described in full in a large-schema overview
   retention: { history: 20000, feedback: 5000, delivery: 5000, alertEvent: 5000, admin: 5000, evalRun: 200, schemaChange: 1000 }, // records kept per log kind

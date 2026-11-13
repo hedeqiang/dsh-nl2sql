@@ -384,6 +384,11 @@ export const methods = {
       if (!conv.chatName) delete conv.chatName
     }
     const channel = m.channelId ? this.state.channels.find(c => c.id === m.channelId) : undefined
+    // Group rate limits (per asker per minute, per chat per hour), questions only.
+    if (actor.chatPolicy) {
+      const limited = this.checkChatRate(actor.chatPolicy, { chatKey: `${platform}:${m.chatId}`, userKey: `${platform}:${m.chatId}:${userId ?? actor.id}` })
+      if (limited) { this.auditAdmin('bot.rate.limited', `${actor.name} @ ${actor.chatName ?? m.chatId}: ${limited}`, actor); await reply(limited); return }
+    }
     // Reply cards carry no buttons (split / why / details / pin): those are done in Harness conversations.
     // Clicks on buttons of cards sent by older versions are still handled (handleBotAction).
     const buttons = false

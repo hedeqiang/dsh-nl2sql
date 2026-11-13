@@ -9,7 +9,7 @@
       privacy: ['sampleMode', 'resultToModel', 'modelRows', 'maskSensitive'],
       query: ['maxRows', 'timeoutMs', 'scanGuardRows', 'cacheTtlSec', 'schemaOverviewMax'],
       automation: ['schemaWatch', 'schemaCheckDaily', 'schemaNotifyChannel'],
-      lark: ['botDefaultRole', 'larkDefaultRole'],
+      lark: ['botDefaultRole', 'larkDefaultRole', 'chatPolicyDefault'],
       storage: ['retention'],
       about: [],
     }
@@ -103,6 +103,9 @@
         group === 'lark' ? h(React.Fragment, null,
           h(SettingRow, { label: t('set.defaultChannel'), hint: t('set.h.defaultChannel'), htmlFor: 'set-defchannel' }, h(DefaultChannelControl, { t, onOpenPush: () => onNavigate({ section: 'push' }) })),
           h(SettingRow, { label: t('set.l.unknownUser'), hint: t('set.h.botDefaultRole'), changed: changed(roleKey) }, radio(roleKey, ['none', 'viewer', 'analyst'], 'mb.defaultRole')),
+          'chatPolicyDefault' in base && h('div', { className: 'n2s-fq-setgroup', style: { marginTop: 18 } }, t('cp.defaultTitle')),
+          'chatPolicyDefault' in base && h('div', { className: 'n2s-faint n2s-small', style: { marginBottom: 4 } }, t('cp.defaultHint')),
+          'chatPolicyDefault' in base && h(ChatPolicyEditor, { t, policy: form.chatPolicyDefault, onChange: v => set('chatPolicyDefault', v), idPrefix: 'cp-def' }),
           h(BotSummary, { t, onOpenMembers: () => onNavigate({ section: 'members' }), onOpenPush: () => onNavigate({ section: 'push' }) })) :
         group === 'storage' ? h(StorageSection, { t, form, set, changed, defaults }) :
         h(AboutSection, { t })

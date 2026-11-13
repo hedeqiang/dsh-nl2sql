@@ -583,6 +583,33 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.equal(su.larkOpenId, 'ou_5'); assert.equal(su.email, 'w@x.com'); assert.equal(su.kind, 'person'); assert.equal(su.role, 'analyst')
   })
 
+  await test('成员与权限: group editor — follow the default, or custom 谁能提问 / 名单 / 频率 / 只读 → chatPolicy in saveUser', async () => {
+    await openAdmin('成员与权限')
+    await click('+ 添加成员')
+    const form = document.querySelector('.n2s-card')
+    await clickEl([...form.querySelectorAll('.n2s-seg button')][1])
+    await setValue(form.querySelector('input'), '运营群')
+    await setValue(form.querySelector('input[aria-label="身份 1 的 ID"]'), 'oc_9')
+    assert.match(form.textContent, /群内提问权限/)
+    const followSw = form.querySelector('.n2s-cp-wrap input[role=switch]')
+    assert.equal(followSw.checked, true, 'new groups follow the default')
+    assert.ok(!form.querySelector('.n2s-cp'), 'no custom editor while following')
+    await clickEl(followSw)
+    const cp = form.querySelector('.n2s-cp')
+    assert.ok(cp, 'custom editor shown')
+    await clickEl([...cp.querySelectorAll('.n2s-radio input')][2]) // 仅指定成员
+    const listed = [...form.querySelectorAll('.n2s-cp .n2s-chips')][0]
+    await clickEl([...listed.querySelectorAll('button')].find((b) => b.textContent === '张三'))
+    await clickEl([...form.querySelectorAll('.n2s-cp .n2s-radio input')].find((i) => i.closest('label').textContent.includes('以群为准')))
+    await setValue(form.querySelector('input[id$="-perUserPerMinute"]'), '3')
+    await clickEl([...form.querySelectorAll('.n2s-cp input[role=switch]')].find((i) => i.getAttribute('aria-label') === '只读模式'))
+    await click('保存', form); await settle(30)
+    const su = rpcCalls.filter((c) => c.method === 'saveUser').pop().payload
+    assert.equal(su.kind, 'chat')
+    assert.deepEqual(su.chatPolicy, { askers: 'listed', listed: ['u1'], blocked: [], merge: 'chat', perUserPerMinute: 3, perChatPerHour: 0, noAttachments: false, readOnly: true })
+    assert.deepEqual(missingKeys(), [])
+  })
+
   await test('成员与权限: people / groups who talked to the bot are one-click picks; refused ones shown as pending', async () => {
     responses.listSeenIdentities = (p) => [
       { platform: 'lark', kind: 'person', id: 'ou_new', name: '赵六', email: 'z6@x.com', lastAt: Date.now() - 60000, count: 2, refused: true },

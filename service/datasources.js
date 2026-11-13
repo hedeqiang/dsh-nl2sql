@@ -6,6 +6,7 @@ import { DIALECTS, createDriver, describeError } from '../drivers.js'
 import { filterSchema, normalizePolicy, policyActive } from '../policy.js'
 import { sanitizeTableName } from '../sqlite-driver.js'
 import { join } from 'node:path'
+import { normalizeChatPolicy } from './access.js'
 import { CREDENTIAL_SCOPE, DEFAULT_SETTINGS, RETENTION_MAX, RETENTION_MIN, SUPPORTED_TYPES, UserError, clampInt, newId, oneOf, pick, requireText } from './shared.js'
 
 export const methods = {
@@ -21,6 +22,7 @@ export const methods = {
     const s = structuredClone(this.state.settings)
     s.botDefaultRole = s.botDefaultRole ?? s.larkDefaultRole ?? 'none'
     s.larkDefaultRole = s.botDefaultRole
+    s.chatPolicyDefault = { ...DEFAULT_SETTINGS.chatPolicyDefault, ...(s.chatPolicyDefault ?? {}) }
     const ids = s.botDefaultDatasourceIds !== undefined ? s.botDefaultDatasourceIds : s.larkDefaultDatasourceIds
     if (ids !== undefined) { s.botDefaultDatasourceIds = ids; s.larkDefaultDatasourceIds = ids } else { delete s.botDefaultDatasourceIds; delete s.larkDefaultDatasourceIds }
     return s
@@ -68,6 +70,10 @@ export const methods = {
     // Bot defaults: botDefault* (new) or larkDefault* (legacy alias); stored under the new keys.
     const role = input.botDefaultRole ?? input.larkDefaultRole
     if (role !== undefined) { s.botDefaultRole = oneOf(role, ['none', 'viewer', 'analyst'], 'botDefaultRole'); delete s.larkDefaultRole }
+    if (input.chatPolicyDefault !== undefined) {
+      const p = normalizeChatPolicy({ ...input.chatPolicyDefault, inherit: false })
+      s.chatPolicyDefault = { ...p, listed: [], blocked: [] } // name lists are per group
+    }
     const dsIds = input.botDefaultDatasourceIds !== undefined ? input.botDefaultDatasourceIds : input.larkDefaultDatasourceIds
     if (dsIds !== undefined) { s.botDefaultDatasourceIds = dsIds === null ? null : (dsIds ?? []).filter(id => this.findDatasource(id)); delete s.larkDefaultDatasourceIds }
     if (input.schemaNotifyChannel !== undefined) s.schemaNotifyChannel = this.state.channels.some(c => c.id === input.schemaNotifyChannel) ? input.schemaNotifyChannel : ''

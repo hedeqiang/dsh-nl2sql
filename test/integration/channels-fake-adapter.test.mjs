@@ -320,6 +320,21 @@ try {
     assert.ok(Array.isArray(list.channels))
   })
 
+  await test('group policy in the bot pipeline: rate limit replies and stops the turn; unregistered askers refused', async () => {
+    const g = service.state.users.find(u => u.kind === 'chat' && u.name === '假群')
+    await call('saveUser', { id: g.id, chatPolicy: { askers: 'members', perUserPerMinute: 1 } })
+    service.chatRate?.clear()
+    const before = prompts.length
+    await bot.receive({ id: 'r1', text: 'Q:select 1 as x', userId: 'u1' })
+    await bot.receive({ id: 'r2', text: 'Q:select 2 as x', userId: 'u1' })
+    assert.equal(prompts.length, before + 1, 'second question in the same minute does not reach the agent')
+    assert.match(bot.replies.at(-1).text ?? '', /提问太频繁/)
+    await bot.receive({ id: 'r3', text: 'Q:select 3 as x', userId: 'stranger' })
+    assert.match(bot.replies.at(-1).text ?? '', /只允许已登记的成员/)
+    assert.equal(prompts.length, before + 1)
+    await call('saveUser', { id: g.id, chatPolicy: { askers: 'all' } })
+  })
+
   await test('actions: re-authorized per click (rate limit, viewer, wrong chat, wrong channel); breakdown replies', async () => {
     // Replies carry no buttons now; tokens from cards sent by older versions are still honoured.
     const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)

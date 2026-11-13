@@ -56,7 +56,61 @@ export function findIdentityClash(users, u) {
   })
 }
 
+/**
+ * Who may ask in a group chat and how. Stored on chat members as `chatPolicy`:
+ *   { inherit?: true }                       use settings.chatPolicyDefault
+ *   { askers: 'all' | 'members' | 'listed',  everyone in the group / registered members only / listed members only
+ *     listed: [memberId], blocked: [memberId],
+ *     merge: 'strict' | 'chat',              strict = narrower of group and person; chat = the group's scope and role
+ *     perUserPerMinute: n, perChatPerHour: n, 0 = unlimited
+ *     noAttachments: bool, readOnly: bool }
+ * Chats registered before this setting existed have no chatPolicy and behave as 'all'.
+ */
+export const CHAT_POLICY_DEFAULT = Object.freeze({ askers: 'members', listed: [], blocked: [], merge: 'strict', perUserPerMinute: 0, perChatPerHour: 0, noAttachments: false, readOnly: false })
+export const CHAT_POLICY_LEGACY = Object.freeze({ ...CHAT_POLICY_DEFAULT, askers: 'all' })
+export function normalizeChatPolicy(input, personIds) {
+  if (!input || typeof input !== 'object') return { inherit: true }
+  if (input.inherit) return { inherit: true }
+  const ids = (list) => [...new Set((Array.isArray(list) ? list : []).map(String))].filter(id => !personIds || personIds.includes(id)).slice(0, 500)
+  const n = (v, max) => { const x = Math.floor(Number(v)); return Number.isFinite(x) && x > 0 ? Math.min(x, max) : 0 }
+  return {
+    askers: oneOf(input.askers ?? 'members', ['all', 'members', 'listed'], 'chatPolicy.askers'),
+    listed: ids(input.listed), blocked: ids(input.blocked),
+    merge: oneOf(input.merge ?? 'strict', ['strict', 'chat'], 'chatPolicy.merge'),
+    perUserPerMinute: n(input.perUserPerMinute, 120), perChatPerHour: n(input.perChatPerHour, 10000),
+    noAttachments: Boolean(input.noAttachments), readOnly: Boolean(input.readOnly),
+  }
+}
+
 export const methods = {
+  /** Effective policy of a chat member (null for persons / unknown chats). */
+  chatPolicyOf(chat) {
+    if (!chat || chat.kind !== 'chat') return null
+    if (!chat.chatPolicy) return { ...CHAT_POLICY_LEGACY }
+    if (chat.chatPolicy.inherit) return { ...CHAT_POLICY_DEFAULT, ...normalizeChatPolicy(this.state.settings.chatPolicyDefault ?? CHAT_POLICY_DEFAULT) }
+    return { ...CHAT_POLICY_DEFAULT, ...chat.chatPolicy }
+  },
+
+  /**
+   * Per-asker / per-chat sliding-window rate limit (in memory). Returns a refusal text or null.
+   * Only counts admitted questions; commands and refusals are not counted.
+   */
+  checkChatRate(policy, { chatKey, userKey }, now = Date.now()) {
+    if (!policy) return null
+    this.chatRate ??= new Map()
+    const hit = (key, windowMs, max) => {
+      if (!max) return false
+      const list = (this.chatRate.get(key) ?? []).filter(t => now - t < windowMs)
+      this.chatRate.set(key, list)
+      return list.length >= max
+    }
+    if (hit(`u:${userKey}`, 60000, policy.perUserPerMinute)) return `提问太频繁：每人每分钟最多 ${policy.perUserPerMinute} 次，请稍后再试。`
+    if (hit(`c:${chatKey}`, 3600000, policy.perChatPerHour)) return `本群提问次数已达上限：每小时最多 ${policy.perChatPerHour} 次，请稍后再试。`
+    for (const [key, max] of [[`u:${userKey}`, policy.perUserPerMinute], [`c:${chatKey}`, policy.perChatPerHour]]) if (max) this.chatRate.get(key).push(now)
+    if (this.chatRate.size > 5000) for (const k of [...this.chatRate.keys()].slice(0, 1000)) this.chatRate.delete(k)
+    return null
+  },
+
   // ------------------------------------------------------------ access
 
   /**
@@ -142,6 +196,10 @@ export const methods = {
       })).filter(r => r.values.length).slice(0, 20)
       if (u.rowRules.some(r => !/^[A-Za-z_\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*$/.test(r.column))) throw new UserError('nl2sql/invalid', '行级规则的字段名只能包含字母、数字、下划线或中文')
     }
+    if (u.kind === 'chat') {
+      if (input.chatPolicy !== undefined) u.chatPolicy = normalizeChatPolicy(input.chatPolicy, (this.state.users ?? []).filter(x => x.kind === 'person').map(x => x.id))
+      else if (!existing) u.chatPolicy = { inherit: true } // new groups follow the global default (settings.chatPolicyDefault)
+    } else delete u.chatPolicy
     const dup = findIdentityClash(this.state.users ?? [], u)
     if (dup) throw new UserError('nl2sql/duplicate', `该身份已属于成员「${dup.name}」`)
     u.updatedAt = Date.now()
@@ -194,7 +252,15 @@ export const methods = {
     const defaults = this.botDefaults()
     const fallbackRole = defaults.role
     if (!person && !chat && fallbackRole === 'none') return { refused: `你还没有开通数据问答权限，请联系管理员在「数据问答 → 成员」中添加你的${PLATFORM_LABEL[platform] ?? platform}账号。` }
-    const scopes = [person?.datasourceIds, chat?.datasourceIds].filter(x => x !== undefined)
+    // Group policy: who may ask in this group, and whether the person's own scope narrows the group's.
+    const policy = this.chatPolicyOf(chat)
+    if (policy) {
+      if (person && policy.blocked.includes(person.id)) return { refused: `你在群「${chat.name}」中的提问权限已被管理员暂停。` }
+      if (policy.askers === 'members' && !person) return { refused: `本群只允许已登记的成员提问。请联系管理员在「数据问答 → 成员与权限」中添加你的${PLATFORM_LABEL[platform] ?? platform}账号。`, policy }
+      if (policy.askers === 'listed' && !(person && policy.listed.includes(person.id))) return { refused: `本群只允许指定成员提问，你不在名单中。请联系管理员在群「${chat.name}」的提问权限中添加你。`, policy }
+    }
+    const useChatOnly = Boolean(policy && chat && policy.merge === 'chat')
+    const scopes = (useChatOnly ? [chat.datasourceIds] : [person?.datasourceIds, chat?.datasourceIds]).filter(x => x !== undefined)
     let datasourceIds = null
     for (const sc of scopes) if (Array.isArray(sc)) datasourceIds = datasourceIds === null ? [...sc] : datasourceIds.filter(id => sc.includes(id))
     if (!person && !chat) datasourceIds = defaults.datasourceIds ?? []
@@ -204,9 +270,10 @@ export const methods = {
       actor: {
         kind: platform, platform, id: person?.id ?? `${platform}:${userId}`, name: person?.name ?? name ?? userId,
         // Group chats: the narrower of the person's and the group's role.
-        role: [person?.role, chat?.role, (!person && !chat) ? fallbackRole : undefined].filter(Boolean).sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b])[0] ?? role,
+        role: policy?.readOnly ? 'viewer' : useChatOnly ? chat.role : ([person?.role, chat?.role, (!person && !chat) ? fallbackRole : undefined].filter(Boolean).sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b])[0] ?? role),
         userId, ...(platform === 'lark' ? { openId: userId } : {}), chatId, chatName: chat?.name, datasourceIds,
-        rowRules: [...(person?.rowRules ?? []), ...(chat?.rowRules ?? [])],
+        rowRules: useChatOnly ? [...(chat.rowRules ?? [])] : [...(person?.rowRules ?? []), ...(chat?.rowRules ?? [])],
+        ...(policy ? { chatPolicy: policy, chatMemberId: chat.id } : {}),
         defaultDatasourceId: chat?.defaultDatasourceId ?? person?.defaultDatasourceId ?? (datasourceIds?.[0] ?? null),
       },
     }

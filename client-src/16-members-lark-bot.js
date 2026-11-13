@@ -113,6 +113,12 @@
       })
       const [error, setError] = useState(null)
       const [idErrors, setIdErrors] = useState({})
+      const usersAll = useAsync(() => call('listUsers'), [])
+      const persons = (usersAll.value ?? []).filter(u => u.kind === 'person' && !u.disabled)
+      const defaults = useAsync(() => call('getSettings'), [])
+      // Groups: { inherit: true } follows Settings → Bots; a new group starts there too.
+      // Groups registered before this setting (no chatPolicy) behave as "everyone in the group".
+      const [policy, setPolicy] = useState(() => initial?.id ? (initial.chatPolicy ?? { ...CHAT_POLICY_FALLBACK, askers: 'all' }) : { inherit: true })
       const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
       const ids = form.datasourceIds ?? []
       const rules = form.rowRules ?? []
@@ -131,7 +137,7 @@
         const legacy = form.kind === 'chat' ? { larkChatId: lark?.id ?? '' } : { larkOpenId: lark?.id ?? '', email: email ?? '' }
         const { identities: _i, larkOpenId: _o, larkChatId: _c, email: _e, ...rest } = form
         try {
-          await call('saveUser', { ...rest, ...legacy, identities: kept.filter(r => r.id), datasourceIds: form.allDatasources ? null : ids, rowRules: rules.filter(r => r.column && (Array.isArray(r.values) ? r.values.length : String(r.values ?? '').trim())) })
+          await call('saveUser', { ...rest, ...legacy, ...(form.kind === 'chat' ? { chatPolicy: policy } : {}), identities: kept.filter(r => r.id), datasourceIds: form.allDatasources ? null : ids, rowRules: rules.filter(r => r.column && (Array.isArray(r.values) ? r.values.length : String(r.values ?? '').trim())) })
           onDone()
         } catch (e) { setError(e.message) }
       }
@@ -159,6 +165,14 @@
               h('button', { type: 'button', className: 'n2s-iconbtn', 'aria-label': t('ds.delete'), onClick: () => setForm(f => ({ ...f, rowRules: (f.rowRules ?? []).filter((_, j) => j !== i) })) }, Icon.close()))),
             h('button', { type: 'button', className: 'n2s-btn small ghost', style: { justifySelf: 'start' }, onClick: () => setForm(f => ({ ...f, rowRules: [...(f.rowRules ?? []), { datasourceId: null, column: '', values: '' }] })) }, '+ ', t('mb.addRule'))),
           h('label', { className: 'n2s-field full' }, h('span', null, t('im.description')), h('input', { className: 'n2s-input', value: form.note ?? '', onChange: set('note') }))),
+        form.kind === 'chat' && h('div', { className: 'n2s-cp-wrap' },
+          h('div', { className: 'n2s-fq-setgroup' }, t('cp.title')),
+          h(SettingRow, { label: t('cp.useDefault'), hint: t('cp.useDefault.hint') },
+            h('label', { className: 'n2s-switch' }, h('input', { type: 'checkbox', role: 'switch', checked: Boolean(policy.inherit), 'aria-label': t('cp.useDefault'), onChange: e => setPolicy(e.target.checked ? { inherit: true } : { ...CHAT_POLICY_FALLBACK, ...(defaults.value?.chatPolicyDefault ?? {}) }) }),
+              h('span', null, policy.inherit ? t('cp.following') : t('cp.custom')))),
+          policy.inherit
+            ? h('div', { className: 'n2s-faint n2s-small', style: { padding: '0 0 6px' } }, chatPolicySummary(t, { chatPolicy: { inherit: true } }, defaults.value?.chatPolicyDefault))
+            : h(ChatPolicyEditor, { t, policy, onChange: setPolicy, persons, idPrefix: `cp-${initial?.id ?? 'new'}` })),
         error && h('div', { className: 'n2s-notice err', role: 'alert', style: { marginTop: 10 } }, error),
         h('div', { className: 'n2s-row', style: { marginTop: 12, justifyContent: 'flex-end' } },
           h('button', { type: 'button', className: 'n2s-btn ghost', onClick: onCancel }, t('ds.cancel')),
@@ -248,7 +262,8 @@
               h('div', { className: 'n2s-grow', style: { minWidth: 0 } },
                 h('div', { className: 'n2s-row', style: { gap: 6 } }, h('span', { className: 'n2s-list2-title' }, u.name), h('span', { className: 'n2s-badge' }, t(`mb.role.${u.role}`)), u.disabled && h('span', { className: 'n2s-badge err' }, t('mb.disabled'))),
                 h('div', { className: 'n2s-row', style: { gap: 6, marginTop: 4 } }, h(IdentityChips, { t, u, catalog }), h('span', { className: 'n2s-muted n2s-small' }, u.datasourceIds === null ? t('mb.allDs') : (u.datasourceNames ?? []).join(listSep()) || t('mb.noDs'))),
-                (u.rowRules ?? []).length > 0 && h('div', { className: 'n2s-list2-sub' }, `${colon(t('mb.rowRules'))}${joinClauses(u.rowRules.map(r => `${r.column} ∈ {${r.values.join(', ')}}`))}`)),
+                (u.rowRules ?? []).length > 0 && h('div', { className: 'n2s-list2-sub' }, `${colon(t('mb.rowRules'))}${joinClauses(u.rowRules.map(r => `${r.column} ∈ {${r.values.join(', ')}}`))}`),
+                u.kind === 'chat' && h('div', { className: 'n2s-list2-sub' }, chatPolicySummary(t, u, settings.value?.chatPolicyDefault))),
               h('div', { className: 'n2s-list2-side' }, h('span', { className: 'n2s-small' }, us ? fmt(t, 'mb.queries', { n: us.queries }) : t('mb.noUsage')), us?.lastAt && h('span', { className: 'n2s-faint n2s-small' }, new Date(us.lastAt).toLocaleDateString())),
               h(Dropdown, { label: fmt(t, 'ch.actionsFor', { name: u.name }), trigger: { content: Icon.more() }, items: [
                 { label: t('ds.edit'), icon: Icon.edit(14), onClick: () => setEditing(u) },
