@@ -600,13 +600,13 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await clickEl([...cp.querySelectorAll('.n2s-radio input')][2]) // 仅指定成员
     const listed = [...form.querySelectorAll('.n2s-cp .n2s-chips')][0]
     await clickEl([...listed.querySelectorAll('button')].find((b) => b.textContent === '张三'))
-    await clickEl([...form.querySelectorAll('.n2s-cp .n2s-radio input')].find((i) => i.closest('label').textContent.includes('以群为准')))
+    assert.doesNotMatch(form.textContent, /权限怎么合并/, 'no merge option')
     await setValue(form.querySelector('input[id$="-perUserPerMinute"]'), '3')
     await clickEl([...form.querySelectorAll('.n2s-cp input[role=switch]')].find((i) => i.getAttribute('aria-label') === '只读模式'))
     await click('保存', form); await settle(30)
     const su = rpcCalls.filter((c) => c.method === 'saveUser').pop().payload
     assert.equal(su.kind, 'chat')
-    assert.deepEqual(su.chatPolicy, { askers: 'listed', listed: ['u1'], blocked: [], merge: 'chat', perUserPerMinute: 3, perChatPerHour: 0, noAttachments: false, readOnly: true })
+    assert.deepEqual(su.chatPolicy, { askers: 'listed', listed: ['u1'], blocked: [], perUserPerMinute: 3, perChatPerHour: 0, noAttachments: false, readOnly: true })
     assert.deepEqual(missingKeys(), [])
   })
 

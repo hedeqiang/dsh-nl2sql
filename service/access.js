@@ -61,12 +61,11 @@ export function findIdentityClash(users, u) {
  *   { inherit?: true }                       use settings.chatPolicyDefault
  *   { askers: 'all' | 'members' | 'listed',  everyone in the group / registered members only / listed members only
  *     listed: [memberId], blocked: [memberId],
- *     merge: 'strict' | 'chat',              strict = narrower of group and person; chat = the group's scope and role
  *     perUserPerMinute: n, perChatPerHour: n, 0 = unlimited
  *     noAttachments: bool, readOnly: bool }
  * Chats registered before this setting existed have no chatPolicy and behave as 'all'.
  */
-export const CHAT_POLICY_DEFAULT = Object.freeze({ askers: 'members', listed: [], blocked: [], merge: 'strict', perUserPerMinute: 0, perChatPerHour: 0, noAttachments: false, readOnly: false })
+export const CHAT_POLICY_DEFAULT = Object.freeze({ askers: 'members', listed: [], blocked: [], perUserPerMinute: 0, perChatPerHour: 0, noAttachments: false, readOnly: false })
 export const CHAT_POLICY_LEGACY = Object.freeze({ ...CHAT_POLICY_DEFAULT, askers: 'all' })
 export function normalizeChatPolicy(input, personIds) {
   if (!input || typeof input !== 'object') return { inherit: true }
@@ -76,7 +75,6 @@ export function normalizeChatPolicy(input, personIds) {
   return {
     askers: oneOf(input.askers ?? 'members', ['all', 'members', 'listed'], 'chatPolicy.askers'),
     listed: ids(input.listed), blocked: ids(input.blocked),
-    merge: oneOf(input.merge ?? 'strict', ['strict', 'chat'], 'chatPolicy.merge'),
     perUserPerMinute: n(input.perUserPerMinute, 120), perChatPerHour: n(input.perChatPerHour, 10000),
     noAttachments: Boolean(input.noAttachments), readOnly: Boolean(input.readOnly),
   }
@@ -88,7 +86,8 @@ export const methods = {
     if (!chat || chat.kind !== 'chat') return null
     if (!chat.chatPolicy) return { ...CHAT_POLICY_LEGACY }
     if (chat.chatPolicy.inherit) return { ...CHAT_POLICY_DEFAULT, ...normalizeChatPolicy(this.state.settings.chatPolicyDefault ?? CHAT_POLICY_DEFAULT) }
-    return { ...CHAT_POLICY_DEFAULT, ...chat.chatPolicy }
+    const { merge: _m, ...stored } = chat.chatPolicy
+    return { ...CHAT_POLICY_DEFAULT, ...stored }
   },
 
   /**
@@ -259,8 +258,9 @@ export const methods = {
       if (policy.askers === 'members' && !person) return { refused: `本群只允许已登记的成员提问。请联系管理员在「数据问答 → 成员与权限」中添加你的${PLATFORM_LABEL[platform] ?? platform}账号。`, policy }
       if (policy.askers === 'listed' && !(person && policy.listed.includes(person.id))) return { refused: `本群只允许指定成员提问，你不在名单中。请联系管理员在群「${chat.name}」的提问权限中添加你。`, policy }
     }
-    const useChatOnly = Boolean(policy && chat && policy.merge === 'chat')
-    const scopes = (useChatOnly ? [chat.datasourceIds] : [person?.datasourceIds, chat?.datasourceIds]).filter(x => x !== undefined)
+    // A registered person in a registered group gets the stricter of the two (intersection of
+    // data sources, lower role, both sets of row rules).
+    const scopes = [person?.datasourceIds, chat?.datasourceIds].filter(x => x !== undefined)
     let datasourceIds = null
     for (const sc of scopes) if (Array.isArray(sc)) datasourceIds = datasourceIds === null ? [...sc] : datasourceIds.filter(id => sc.includes(id))
     if (!person && !chat) datasourceIds = defaults.datasourceIds ?? []
@@ -270,9 +270,9 @@ export const methods = {
       actor: {
         kind: platform, platform, id: person?.id ?? `${platform}:${userId}`, name: person?.name ?? name ?? userId,
         // Group chats: the narrower of the person's and the group's role.
-        role: policy?.readOnly ? 'viewer' : useChatOnly ? chat.role : ([person?.role, chat?.role, (!person && !chat) ? fallbackRole : undefined].filter(Boolean).sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b])[0] ?? role),
+        role: policy?.readOnly ? 'viewer' : ([person?.role, chat?.role, (!person && !chat) ? fallbackRole : undefined].filter(Boolean).sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b])[0] ?? role),
         userId, ...(platform === 'lark' ? { openId: userId } : {}), chatId, chatName: chat?.name, datasourceIds,
-        rowRules: useChatOnly ? [...(chat.rowRules ?? [])] : [...(person?.rowRules ?? []), ...(chat?.rowRules ?? [])],
+        rowRules: [...(person?.rowRules ?? []), ...(chat?.rowRules ?? [])],
         ...(policy ? { chatPolicy: policy, chatMemberId: chat.id } : {}),
         defaultDatasourceId: chat?.defaultDatasourceId ?? person?.defaultDatasourceId ?? (datasourceIds?.[0] ?? null),
       },

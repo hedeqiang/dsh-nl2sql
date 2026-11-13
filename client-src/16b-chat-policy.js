@@ -1,9 +1,9 @@
     // ------------------------------------------------------------ group question permissions
-    // Who may ask the bot in a group, how a person's own scope combines with the group's,
-    // a blocked list, rate limits and restrictions. Used in the group member form (per group,
+    // Who may ask the bot in a group (a registered person always gets the stricter of their own
+    // and the group's permissions), a blocked list, rate limits and restrictions. Used in the group member form (per group,
     // optionally "follow the default") and in Settings → Bots (the default for new groups).
 
-    const CHAT_POLICY_FALLBACK = { askers: 'members', listed: [], blocked: [], merge: 'strict', perUserPerMinute: 0, perChatPerHour: 0, noAttachments: false, readOnly: false }
+    const CHAT_POLICY_FALLBACK = { askers: 'members', listed: [], blocked: [], perUserPerMinute: 0, perChatPerHour: 0, noAttachments: false, readOnly: false }
 
     /** A person picker: chips of registered persons; toggles ids in `value`. */
     function PersonChips({ t, persons, value, onChange, label, empty }) {
@@ -17,7 +17,8 @@
      * the name lists; without them (Settings default) the lists are hidden.
      */
     function ChatPolicyEditor({ t, policy, onChange, persons, idPrefix = 'cp' }) {
-      const p = { ...CHAT_POLICY_FALLBACK, ...(policy ?? {}) }
+      const { merge: _m, ...given } = policy ?? {}
+      const p = { ...CHAT_POLICY_FALLBACK, ...given }
       const set = (k, v) => onChange({ ...p, [k]: v })
       const radio = (key, values, label) => h('div', { className: 'n2s-radios', role: 'radiogroup', 'aria-label': label },
         values.map(v => h('label', { key: v, className: `n2s-radio${p[key] === v ? ' on' : ''}` },
@@ -31,7 +32,6 @@
         // The default (Settings) has no member lists: 'listed' only makes sense per group.
         h(SettingRow, { label: t('cp.askers') }, radio('askers', persons ? ['all', 'members', 'listed'] : ['all', 'members'], t('cp.askers'))),
         persons && p.askers === 'listed' && h(SettingRow, { label: t('cp.listed'), hint: t('cp.listed.hint') }, h(PersonChips, { t, persons, value: p.listed, onChange: v => set('listed', v), label: t('cp.listed'), empty: t('cp.noPersons') })),
-        h(SettingRow, { label: t('cp.merge') }, radio('merge', ['strict', 'chat'], t('cp.merge'))),
         persons && h(SettingRow, { label: t('cp.blocked'), hint: t('cp.blocked.hint') }, h(PersonChips, { t, persons, value: p.blocked, onChange: v => set('blocked', v), label: t('cp.blocked'), empty: t('cp.noPersons') })),
         h(SettingRow, { label: t('cp.perUser'), htmlFor: `${idPrefix}-perUserPerMinute`, hint: t('cp.rate.hint') }, num('perUserPerMinute', 120, t('cp.perMinute'))),
         h(SettingRow, { label: t('cp.perChat'), htmlFor: `${idPrefix}-perChatPerHour` }, num('perChatPerHour', 10000, t('cp.perHour'))),
@@ -46,7 +46,6 @@
       const p = legacy ? { ...CHAT_POLICY_FALLBACK, askers: 'all' } : inherit ? { ...CHAT_POLICY_FALLBACK, ...(def ?? {}) } : { ...CHAT_POLICY_FALLBACK, ...u.chatPolicy }
       const parts = [t(`cp.askers.${p.askers}`)]
       if (p.askers === 'listed') parts[0] = fmt(t, 'cp.sum.listed', { n: p.listed.length })
-      if (p.merge === 'chat') parts.push(t('cp.merge.chat'))
       if (p.blocked?.length) parts.push(fmt(t, 'cp.sum.blocked', { n: p.blocked.length }))
       if (p.perUserPerMinute) parts.push(fmt(t, 'cp.sum.perUser', { n: p.perUserPerMinute }))
       if (p.perChatPerHour) parts.push(fmt(t, 'cp.sum.perChat', { n: p.perChatPerHour }))

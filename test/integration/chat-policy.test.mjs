@@ -50,15 +50,12 @@ try {
     assert.ok(ask('ou_a').actor)
   })
 
-  await test('merge: strict = narrower of group and person; chat = the group decides', async () => {
-    await call('saveUser', { id: chat.id, chatPolicy: { askers: 'members', merge: 'strict' } })
-    let a = ask('ou_a').actor
+  await test('a registered person in a group gets the stricter of the two (data sources, role)', async () => {
+    await call('saveUser', { id: chat.id, chatPolicy: { askers: 'members', merge: 'chat' } }) // a stale merge value is ignored
+    const a = ask('ou_a').actor
     assert.deepEqual(a.datasourceIds, [d1], 'Alice only has d1')
-    assert.equal(a.role, 'analyst', 'narrower role (group analyst < admin)')
-    await call('saveUser', { id: chat.id, chatPolicy: { askers: 'members', merge: 'chat' } })
-    a = ask('ou_a').actor
-    assert.deepEqual(a.datasourceIds.sort(), [d1, d2].sort(), "the group's scope")
-    assert.equal(a.role, 'analyst', "the group's role")
+    assert.equal(a.role, 'analyst', 'lower role (group analyst < admin)')
+    assert.equal(service.state.users.find(u => u.id === chat.id).chatPolicy.merge, undefined, 'not stored')
   })
 
   await test('read-only: everyone asks as a viewer', async () => {
