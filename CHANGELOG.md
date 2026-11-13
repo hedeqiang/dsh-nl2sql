@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-11-13
+
+### Changed
+- **Cleaner bot reply cards:** intermediate queries the agent marks with `show: false`, and empty results when the answer has non-empty ones, are no longer shown (an empty probe of the wrong table read like "no such order").
+- **Buttons only where they help:** results looking up one order / id / hash, single rows and empty results get no "split by dimension", "details" or "pin to dashboard" buttons.
+- **Single records as field lists:** one-row results are shown as one "field: value" per line, with long identifiers in full (no truncation, no 万 / 亿 abbreviation of order numbers).
+- **Codes with meanings:** status / type codes are shown as `10（处理中）` when the column comment (e.g. `0=新建，10=处理中，11=交易失败`) or a knowledge column note defines them — in IM cards and tables.
+
 ## [0.14.2] - 2026-11-13
 
 ### Fixed
@@ -151,7 +159,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.3...HEAD
+[0.14.3]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.13.1...v0.14.0

@@ -269,6 +269,7 @@ function registerTools(ctx, service) {
       properties: {
         sql: { type: 'string', description: 'The single read-only SQL statement.' },
         title: { type: 'string', description: 'Short human title for the result, in the user\'s language.' },
+        show: { type: 'boolean', description: 'IM bot answers only: false = an intermediate / exploratory query that should not be shown in the reply card (e.g. a lookup that found nothing, a probe of the wrong table). Default true.' },
         datasource: DATASOURCE_PARAM,
         chart: chartParam,
         confirmScan: { type: 'boolean', description: 'Set true only after a scan-guard refusal when the user accepts a full scan of a large table.' },
@@ -281,6 +282,7 @@ function registerTools(ctx, service) {
     presentCall: (args) => ({ card: 'generic', title: args?.title ? `查询：${args.title}` : '执行 SQL', kind: 'read' }),
     execute: wrap(async (args, exec) => {
       const result = await service.runQuery({ sql: args.sql, datasourceId: args.datasource, sessionId: exec.agent?.id, title: args.title, chart: args.chart, source: 'agent', confirmScan: Boolean(args.confirmScan) })
+      if (args.show === false) result.hidden = true
       return { model: service.modelView(result), display: displayMeta(result) }
     }),
   })

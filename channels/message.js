@@ -61,19 +61,40 @@ export function defangMd(s) {
  * A KPI-style result (one row) as `**col**：value ｜ …` Markdown. NULL shows as '—'.
  * `escape` is applied to data-derived text (column names and values).
  */
-export function kpiText(result, { separator = '　｜　', bold = true, escape = defangMd } = {}) {
+export function kpiText(result, { separator = '　｜　', bold = true, escape = defangMd, vertical } = {}) {
   const row = result.rows?.[0] ?? []
+  // A single record with several fields reads better as one field per line ("字段：值").
+  const listMode = vertical ?? (result.columns.length > 3 || result.columns.some((c, i) => String(row[i] ?? '').length > 24))
   return result.columns.map((c, i) => {
-    const raw = c.kind === 'number' ? fmtNum(row[i]) : cellText(row[i])
+    const labelled = labelValue(c, row[i])
+    // Long identifiers (order / trade numbers) are shown in full in list mode so they can be copied.
+    const raw = labelled ?? (c.kind === 'number' && !isCode(c, row[i]) ? fmtNum(row[i]) : cellText(row[i], listMode ? 200 : 80))
     const value = raw === '' ? '—' : escape(oneLine(raw))
     const name = escape(oneLine(c.name))
     return `${bold ? `**${name}**` : name}：${value}`
-  }).join(separator)
+  }).join(listMode ? '\n' : separator)
 }
 
-/** True when the result should be shown as KPI text rather than a table/chart. */
+/**
+ * `10` → `10（处理中）` when the column carries value labels (from the column comment or a
+ * knowledge note, attached by runQuery as `column.labels`). Returns undefined when unlabelled.
+ */
+export function labelValue(column, v) {
+  if (v === null || v === undefined || v === '' || !column?.labels) return undefined
+  const label = column.labels[String(v)]
+  return label ? `${v}（${label}）` : undefined
+}
+
+/** Numeric-looking ids / codes (order numbers, status codes) must not be abbreviated (万 / 亿). */
+function isCode(column, v) {
+  if (column?.labels) return true
+  const name = String(column?.name ?? '')
+  return /(^|_)(id|no|code|num|number|status|type|state|seq|hash)$|编号|单号|订单号|状态|类型/i.test(name) || (typeof v === 'string' && /^\d{12,}$/.test(v))
+}
+
+/** True when the result should be shown as KPI / field-list text rather than a table/chart. */
 export function isKpi(result) {
-  return result.chart?.type === 'kpi' || (result.rows.length === 1 && result.columns.length <= 6)
+  return result.chart?.type === 'kpi' || (result.rows.length === 1 && result.columns.length <= 12)
 }
 
 /** "12 行（已截断） · 已筛选：…" */

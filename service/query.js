@@ -9,7 +9,7 @@ import { admitSql, prepareSql, stripSql } from '../sql-guard.js'
 import { cacheKey } from '../store.js'
 import { createHash } from 'node:crypto'
 import { writeXlsx } from '../xlsx.js'
-import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, SENSITIVE_RULES_VERSION, isCredentialToken, UserError, callContext, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
+import { RESULT_CACHE_LIMIT, SENSITIVE_NAME, parseValueLabels, SENSITIVE_RULES_VERSION, isCredentialToken, UserError, callContext, columnKind, fillChartHint, fmtNum, maskValue, newId, normalizeChart, suggestChart, summarize } from './shared.js'
 
 export const methods = {
   // ---------------------------------------------------------------- query
@@ -146,7 +146,19 @@ export const methods = {
       })
     }
     for (const row of cells) for (const i of sensitive) row[i] = maskValue(res.columns[i].name, row[i])
-    const columns = res.columns.map((f, i) => ({ name: f.name, kind: columnKind(f, cells, i), ...(sensitive.has(i) ? { masked: true } : {}) }))
+    // Code → meaning for enum-like source columns (knowledge note first, then the column comment),
+    // so IM cards can show "10（处理中）" instead of a bare code.
+    const notes = this.knowledgeFor(ds.id).notes ?? {}
+    const labelsOf = (f) => {
+      if (!f.table || !f.column) return null
+      const col = schema?.tables.find(t => t.name === f.table)?.columns.find(c => c.name === f.column)
+      if (!col || col.roles?.includes('sensitive')) return null
+      return parseValueLabels(notes[`${f.table}.${f.column}`]) ?? parseValueLabels(col.comment)
+    }
+    const columns = res.columns.map((f, i) => {
+      const labels = sensitive.has(i) ? null : labelsOf(f)
+      return { name: f.name, kind: columnKind(f, cells, i), ...(sensitive.has(i) ? { masked: true } : {}), ...(labels ? { labels } : {}) }
+    })
     const suggested = suggestChart(columns, cells)
     const resultId = newId('r')
     const result = {

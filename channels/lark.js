@@ -16,7 +16,7 @@
  */
 import { createHash, createHmac } from 'node:crypto'
 import { ChannelError, request } from './http.js'
-import { MD_TABLE, cellText, chartOption, chartable, dualAxis, escapeLarkMd, kpiText, isKpi, needsAttachment, num, oneLine, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
+import { MD_TABLE, labelValue, cellText, chartOption, chartable, dualAxis, escapeLarkMd, kpiText, isKpi, needsAttachment, num, oneLine, omittedNote, parseMdTable, renderChartPng, resultMeta } from './message.js'
 
 export { ChannelError, ChannelError as ImError, chartOption, chartable, dualAxis, renderChartPng }
 
@@ -703,10 +703,12 @@ function tableElement(result, maxRows) {
     page_size: Math.min(10, Math.max(1, Math.min(maxRows, result.rows.length))),
     row_height: 'low',
     header_style: { background_style: 'grey', bold: true, text_size: 'normal' },
-    columns: cols.map((c, i) => ({ name: `c${i}`, display_name: c.name, data_type: c.kind === 'number' ? 'number' : 'text', ...(c.kind === 'number' ? { format: { separator: true } } : {}), width: 'auto' })),
+    columns: cols.map((c, i) => { const num = c.kind === 'number' && !c.labels; return { name: `c${i}`, display_name: c.name, data_type: num ? 'number' : 'text', ...(num ? { format: { separator: true } } : {}), width: 'auto' } }),
     // NULL / '' numbers stay empty (Number(null) would show 0); line breaks would break rows.
     rows: result.rows.slice(0, maxRows).map(r => Object.fromEntries(cols.flatMap((c, i) => {
       const v = r[i]
+      const labelled = labelValue(c, v)
+      if (labelled) return [[`c${i}`, oneLine(labelled)]]
       if (c.kind !== 'number') return [[`c${i}`, oneLine(cellText(v))]]
       if (v === null || v === undefined || v === '') return [] // empty cell, not 0
       return [[`c${i}`, Number.isFinite(Number(v)) ? Number(v) : oneLine(cellText(v))]]

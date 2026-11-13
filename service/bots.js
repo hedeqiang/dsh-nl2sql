@@ -58,6 +58,29 @@ export function parseBotCommand(text) {
   return null
 }
 
+/**
+ * Results shown in a bot reply: drop ones the agent marked as intermediate (`show: false`),
+ * drop empty results when the answer has non-empty ones (an empty probe of the wrong table
+ * reads like "no such order"), keep at most the last 4.
+ */
+export function selectReplyResults(results) {
+  let list = results.filter(r => !r.hidden)
+  if (list.some(r => !r.error && r.rows?.length)) list = list.filter(r => r.error || r.rows?.length)
+  return list.slice(-4)
+}
+
+/**
+ * A point lookup: the WHERE pins a key column to one value (order no, id, hash…) and there is
+ * no GROUP BY. Splitting or pinning such a result to a dashboard makes no sense.
+ */
+export function isPointLookup(r, dialect) {
+  const parsed = parseSelect(r.baseSql ?? r.sql, { dialect })
+  if (!parsed || parsed.groupBy) return false
+  const where = String(parsed.where ?? '')
+  const keyEq = /(?:^|[^\w])`?(?:\w+\.)?`?(\w*(?:id|_no|no|order_?no|trade_?no|code|hash|uuid|sn|number)|id)`?\s*(?:=\s*'?[\w-]{4,}'?|in\s*\(\s*'?[\w-]{4,}'?\s*\))/i
+  return keyEq.test(where) || /'\d{10,}'|\b\d{12,}\b/.test(where)
+}
+
 function hasAggregate(r, dialect) {
   const parsed = parseSelect(r.baseSql ?? r.sql, { dialect })
   return Boolean(parsed?.select?.some(i => i.isAggregate))
@@ -384,7 +407,7 @@ export const methods = {
           ? `数据源：${ds.name}（群内已用「切换」指定，请只查询这个数据源）。`
           : `当前数据源：${ds.name}${routed?.ds ? '（按问题自动选择）' : ''}。该成员可用的数据源：\n${await this.datasourceCatalog(allowedDs)}\n请先判断问题属于哪个数据源：若不是当前数据源，先用 nl2sql_datasource action=use 切换再查询；在回答开头注明使用的数据源。`)
         : `数据源：${ds.name}。`
-      const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（${dsLine}\n回答会以${name}消息发回该聊天：请用简洁的中文 Markdown 写结论，必要时附上查询结果；不要调用 nl2sql_send，也不要向用户提问——有歧义时说明你的假设后直接回答。${actor.role === 'viewer' ? '该成员是只读角色：只能用 nl2sql_metric 查询指标库，或复用 nl2sql_knowledge 中已验证的样例 SQL；不能自由编写 SQL。' : ''}）`
+      const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（${dsLine}\n回答会以${name}消息发回该聊天：请用简洁的中文 Markdown 写结论，必要时附上查询结果（排查中间步骤、查错表或查不到数据的探索性查询请在 nl2sql_query 中设 show=false，回复卡片只展示支撑结论的结果）；不要调用 nl2sql_send，也不要向用户提问——有歧义时说明你的假设后直接回答。${actor.role === 'viewer' ? '该成员是只读角色：只能用 nl2sql_metric 查询指标库，或复用 nl2sql_knowledge 中已验证的样例 SQL；不能自由编写 SQL。' : ''}）`
       const requestId = platform === 'lark' ? `lark-${m.messageId}` : `${platform}-${m.chatId}-${m.messageId}`
       if (conv.sessionId && this.state.sessions[conv.sessionId] !== ds.id) { this.state.sessions[conv.sessionId] = ds.id; await this.save() }
       const turn = await this.runAgentTurn({ sessionId: conv.sessionId, title: `${name} · ${conv.chatName ?? actor.name}`, requestId, text: prompt, prepare, timeoutMs: 600000 })
@@ -393,7 +416,7 @@ export const methods = {
       let body = turn.text
       if (turn.reason === 'timeout') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（查询超过 10 分钟仍未完成，已停止。请缩小范围后重试。）</font>`
       if (turn.reason === 'input-required') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（需要在 Harness 中确认后才能继续，已取消本次回答。）</font>`
-      const results = turn.resultIds.map(id => this.lookupResult(id)).filter(Boolean).filter(r => { try { this.assertResultAccess(r, { ...actor, kind: platform }); return true } catch { return false } }).slice(-4)
+      const results = selectReplyResults(turn.resultIds.map(id => this.lookupResult(id)).filter(Boolean).filter(r => { try { this.assertResultAccess(r, { ...actor, kind: platform }); return true } catch { return false } }))
       // Buttons (拆分 / 为什么变化 / 明细 / 固定到看板) carry opaque tokens only.
       const shown = buttons ? await this.withResultActions(results, { actor, sessionId: conv.sessionId, channelId: m.channelId, platform, chatId: m.chatId, chatType: m.chatType, replyTo: m.messageId, depth: 0 }) : results
       let status = turn.reason === 'idle' ? 'ok' : 'error'
@@ -610,9 +633,14 @@ export const methods = {
       const role = actor?.role ?? 'analyst'
       const token = this.createActionToken({ resultId: result.resultId, sessionId, channelId, platform, chatId, chatType, replyTo, depth, ownerRole: role })
       const aggregate = hasAggregate(result, dialect)
+      const rows = result.rows?.length ?? 0
+      // Nothing to analyse in empty results; point lookups (one order / one id) and single rows
+      // are not dashboard material and have no dimension to split by.
+      if (rows === 0) return undefined
+      const lookup = isPointLookup(result, dialect)
       const buttons = []
       let select
-      if (aggregate) {
+      if (aggregate && rows > 1 && !lookup) {
         let dims = []
         try { dims = (await this.drillDimensions(result.resultId)).dimensions } catch {}
         const xName = result.chart?.x
@@ -623,8 +651,8 @@ export const methods = {
       const points = xi >= 0 ? result.rows.filter(r => r[xi] !== null && r[xi] !== undefined).length : 0
       const timeLike = xi >= 0 && (result.columns[xi].kind === 'time' || ['line', 'area'].includes(result.chart?.type))
       if (aggregate && timeLike && points >= 2) buttons.push({ text: '为什么变化', value: { a: 'why', t: token } })
-      if (xi >= 0 && points >= 1 && role !== 'viewer') buttons.push({ text: '明细', value: { a: 'detail', t: token } })
-      if (role === 'admin' || role === 'analyst') buttons.push({ text: '固定到看板', value: { a: 'pin', t: token } })
+      if (aggregate && !lookup && xi >= 0 && points >= 1 && role !== 'viewer') buttons.push({ text: '明细', value: { a: 'detail', t: token } })
+      if ((role === 'admin' || role === 'analyst') && !lookup && (aggregate || rows > 1)) buttons.push({ text: '固定到看板', value: { a: 'pin', t: token } })
       if (!select && !buttons.length) return undefined
       return { ...(select ? { select } : {}), buttons }
     } catch (error) {

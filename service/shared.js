@@ -84,6 +84,31 @@ export function maskValue(column, value) {
   return `${s.slice(0, keep)}${'*'.repeat(Math.max(4, s.length - keep * 2))}${s.slice(-keep)}`
 }
 
+/**
+ * Value labels from a column comment or a knowledge note, e.g.
+ *   '交易状态: 0=交易开始，10=处理中，11=交易失败'   → { '0': '交易开始', '10': '处理中', '11': '交易失败' }
+ *   '订单类型: 1withdraw,2deposit'                → { '1': 'withdraw', '2': 'deposit' }
+ *   '资产类型, 0: crypto, 1: rwa'                  → { '0': 'crypto', '1': 'rwa' }
+ * Only short codes (≤ 6 chars, digits or letters) mapped to short labels; needs ≥ 2 pairs.
+ */
+export function parseValueLabels(text) {
+  const src = String(text ?? '')
+  if (!src) return null
+  const out = {}
+  // A code is digits (or one letter); the label may follow directly ("1withdraw", "0内扣").
+  const re = /(?:^|[\s,，;；、:：(（/|])(-?\d{1,6})(?![0-9])\s*(?:=|:|：|-|→|\s)?\s*([^\s,，;；、:：()（）/|=0-9][^\s,，;；、:：()（）/|=]{0,23})/g
+  let m
+  while ((m = re.exec(src))) {
+    const [, code, label] = m
+    if (/^-?\d+$/.test(label) || label === code) continue
+    out[code] = label.replace(/[。.]$/, '')
+  }
+  // Prose like "version 2 of api 3" is not a mapping: require ≥ 2 pairs and most labels not plain English stop words.
+  const labels = Object.values(out)
+  if (labels.length < 2 || labels.filter(l => /^(of|and|or|to|in|on|the|a|an|is|for|at|by|with|位|个|天|次|分)$/i.test(l)).length * 2 >= labels.length) return null
+  return out
+}
+
 // ---------------------------------------------------------- schema analysis
 
 export const NUMERIC_TYPES = new Set(['tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint', 'decimal', 'numeric', 'float', 'double', 'real'])
