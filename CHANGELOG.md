@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-11-13
+
+### Changed
+- **IM bot replies carry no buttons** ("split by dimension", "why did it change", "details", "pin to dashboard"): replies show the conclusion and data only; follow-up analysis happens in Harness conversations. The Lark app bot no longer needs the `card.action.trigger` callback. Clicks on buttons of cards sent by earlier versions still work (re-authorized as before).
+
 ## [0.14.5] - 2026-11-13
 
 ### Changed
@@ -169,7 +174,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.5...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.6...HEAD
+[0.14.6]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.5...v0.14.6
 [0.14.5]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.4...v0.14.5
 [0.14.4]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.3...v0.14.4
 [0.14.3]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.2...v0.14.3

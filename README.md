@@ -122,15 +122,15 @@ All dependencies ship prebuilt binaries, so no install scripts need to run.
 
 Every platform is an adapter under [`channels/`](channels); the core only talks to the adapter interface described in [docs/channels.md](docs/channels.md).
 
-| Platform | Push | Charts | Buttons | Bot without public URL |
-|---|---|---|---|---|
-| Lark / Feishu — group webhook | ✓ | native card charts | – | – |
-| Lark / Feishu — app bot | ✓ (+ Excel attachment) | native charts or images | ✓ | ✓ long connection |
-| Telegram | ✓ (+ Excel attachment) | images | ✓ inline keyboard | ✓ long polling |
-| WeCom — group webhook | ✓ | images | – | – |
-| WeCom — AI bot | ✓ (chats that messaged the bot) | tables | – | ✓ long connection |
-| DingTalk — custom robot | ✓ (optional signing) | tables | – | – |
-| DingTalk — internal app robot | ✓ | tables | – | ✓ Stream mode |
+| Platform | Push | Charts | Bot without public URL |
+|---|---|---|---|
+| Lark / Feishu — group webhook | ✓ | native card charts | – |
+| Lark / Feishu — app bot | ✓ (+ Excel attachment) | native charts or images | ✓ long connection |
+| Telegram | ✓ (+ Excel attachment) | images | ✓ long polling |
+| WeCom — group webhook | ✓ | images | – |
+| WeCom — AI bot | ✓ (chats that messaged the bot) | tables | ✓ long connection |
+| DingTalk — custom robot | ✓ (optional signing) | tables | – |
+| DingTalk — internal app robot | ✓ | tables | ✓ Stream mode |
 
 Add a channel in **Manage → Channels**: pick the platform and connection type, and the form shows the console steps for that platform. People and groups are granted access in **Manage → Members & access**; anyone who has talked to a bot can be added with one click.
 
@@ -153,7 +153,7 @@ Tools: `list_datasources`, `get_schema`, `query`, `query_metric`, `search_knowle
 - **Read-only queries.** Every statement passes a per-dialect lexer (MySQL, PostgreSQL, SQLite, Elasticsearch SQL) that admits only `SELECT` / `SHOW` / `DESCRIBE` / `EXPLAIN`; queries run in read-only transactions with server-side timeouts, PostgreSQL uses the extended protocol (no multi-statement strings), and large results are streamed and truncated.
 - **Access policies.** Allow or deny tables, hide or mask columns, and refuse full scans of large tables unless confirmed.
 - **Members.** Data source scopes, a viewer role (metric library, verified examples and dashboards only) and row-level rules that are injected into queries — queries that cannot be rewritten safely are refused.
-- **Bot actions.** Buttons on IM messages carry opaque tokens only; every click is re-authorized for the person who clicked.
+- **Bot replies.** IM replies carry conclusions and data only, no buttons; follow-up analysis (split, why, details, pin) happens in Harness conversations.
 
 The lexer is a first line of defence, not a substitute for database permissions: **always connect with a read-only account.** See [SECURITY.md](SECURITY.md) to report a vulnerability.
 

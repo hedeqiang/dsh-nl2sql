@@ -650,7 +650,7 @@ const telegramBot = {
     { key: 'chatId', type: 'text', required: false, target: true, label: { zh: 'Chat ID（推送目标）', en: 'Chat ID (push target)' }, placeholder: '-1001234567890 / @mychannel', pattern: CHAT_RE.source, help: { zh: '群组/超级群为负数（通常以 -100 开头），公开频道可填 @用户名；仅作机器人使用时可留空', en: 'Negative number for groups (usually -100…), or @username for public channels; may be empty for bot-only use' } },
     { key: 'apiBase', type: 'url', required: false, label: { zh: 'API 地址（可选）', en: 'API base URL (optional)' }, placeholder: DEFAULT_API_BASE, help: { zh: '自建 Bot API 服务器或反向代理地址；留空使用官方 api.telegram.org', en: 'Self-hosted Bot API server or proxy; empty = api.telegram.org' } },
   ],
-  capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'text', tableRows: 20, files: true, buttons: true, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: TEXT_LIMIT },
+  capabilities: { push: true, markdown: 'basic', charts: 'image', chartModes: ['image', 'table'], tables: 'text', tableRows: 20, files: true, buttons: false, bot: true, listTargets: false, mentionAll: false, maxMessageBytes: TEXT_LIMIT },
   setupSteps: {
     zh: [
       '在 Telegram 中打开 @BotFather，发送 /newbot 按提示创建机器人，复制 Bot Token。',
@@ -658,7 +658,7 @@ const telegramBot = {
       '频道推送：把机器人加为频道管理员，Chat ID 填 @频道用户名 或 -100 开头的数字 ID。',
       '获取 Chat ID：先在群里 @机器人 发一条消息（机器人未运行时），浏览器打开 https://api.telegram.org/bot<Token>/getUpdates，查看 message.chat.id。',
       '开启机器人后使用长轮询（getUpdates）收消息，无需公网地址；若该 Token 之前设置过 Webhook，会自动调用 deleteWebhook 删除。同一 Token 只能有一个实例轮询。',
-      '按钮（下钻、明细等）以内联键盘显示，点击后弹出提示；图表以 PNG 图片发送（sendPhoto）。',
+      '图表以 PNG 图片发送（sendPhoto）。',
     ],
     en: [
       'Open @BotFather in Telegram, send /newbot and copy the bot token.',
@@ -666,7 +666,7 @@ const telegramBot = {
       'Channels: make the bot a channel admin; use @channelusername or the -100… numeric id as Chat ID.',
       'Finding a Chat ID: mention the bot in the chat while the bot is stopped, then open https://api.telegram.org/bot<token>/getUpdates and read message.chat.id.',
       'The bot uses long polling (getUpdates), no public URL needed; an existing webhook is removed with deleteWebhook. Only one instance may poll per token.',
-      'Buttons (drill down, details…) are inline keyboards; charts are sent as PNG photos (sendPhoto).',
+      'Charts are sent as PNG photos (sendPhoto).',
     ],
   },
   validate,

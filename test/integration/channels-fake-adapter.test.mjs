@@ -102,10 +102,12 @@ function fakeSessions(answer) {
 }
 let toolsRef
 const prompts = []
+const firstResultIds = []
 const sessions = fakeSessions(async (text, sid) => {
   prompts.push(text)
   const m = /Q:(.+?)(?:\n|$)/.exec(text)
   const out = await toolsRef.get('nl2sql_query').execute({ sql: m ? m[1] : 'select 1 as x', title: '每日笔数', chart: { type: 'line', x: 'd', y: ['n'] } }, { agent: { id: sid } })
+  if (m) firstResultIds.push(out.display.resultId)
   return { text: `共 ${out.display.rowCount} 天 <font color='green'>↑</font>`, metas: [out.display] }
 })
 
@@ -183,7 +185,7 @@ try {
     assert.ok(dl.some(d => d.status === 'ok' && d.title === '日报'))
   })
 
-  await test('bot: saveBot starts it; group @ message → agent turn on MySQL → reply with actions', async () => {
+  await test('bot: saveBot starts it; group @ message → agent turn on MySQL → reply without buttons', async () => {
     await call('saveUser', { kind: 'chat', name: '假群', identities: [{ platform: 'fakeim', id: 'g1' }], role: 'analyst', datasourceIds: [ds.id] })
     await call('saveUser', { kind: 'person', name: '甲', identities: [{ platform: 'fakeim', id: 'u1' }], role: 'analyst', datasourceIds: [ds.id] })
     await call('saveUser', { kind: 'person', name: '读', identities: [{ platform: 'fakeim', id: 'u9' }], role: 'viewer', datasourceIds: [ds.id] })
@@ -198,9 +200,7 @@ try {
     assert.ok(card, JSON.stringify(bot.replies))
     assert.match(card.message.text, /共 \d+ 天/)
     assert.equal(card.message.results.length, 1)
-    const actions = card.message.results[0].actions
-    assert.ok(actions?.buttons?.some(b => b.text === '为什么变化'), JSON.stringify(actions))
-    for (const b of actions.buttons) assert.deepEqual(Object.keys(b.value).sort(), ['a', 't'])
+    assert.equal(card.message.results[0].actions, undefined, 'bot replies carry no buttons')
     assert.ok(bot.replies.some(r => r.react === 'working') && bot.replies.some(r => r.react === 'done'))
     assert.match(prompts.at(-1), /^\[fakeim群「g1」 · 甲\] Q:/, prompts.at(-1).slice(0, 40))
     const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)
@@ -292,8 +292,12 @@ try {
   })
 
   await test('actions: re-authorized per click (rate limit, viewer, wrong chat, wrong channel); breakdown replies', async () => {
-    const card = bot.replies.find(r => r.kind === 'card' && r.to === 'q1')
-    const { select, buttons } = card.message.results[0].actions
+    // Replies carry no buttons now; tokens from cards sent by older versions are still honoured.
+    const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)
+    const resultId = firstResultIds[0]
+    const actor = service.resolveActor({ platform: 'fakeim', userId: 'u1', chatId: 'g1', chatType: 'group' }).actor
+    const [withActions] = await service.withResultActions([service.lookupResult(resultId)], { actor, sessionId: conv.sessionId, channelId: ch.id, platform: 'fakeim', chatId: 'g1', chatType: 'group', replyTo: 'q1', depth: 0 })
+    const { select, buttons } = withActions.actions
     const why = buttons.find(b => b.text === '为什么变化').value
     const ok = await bot.click({ userId: 'u1', value: select.value, option: select.options.find(o => o.value === 'chain_type')?.value ?? select.options[0].value })
     assert.equal(ok.toast.type, 'info')

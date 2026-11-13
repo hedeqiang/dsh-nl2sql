@@ -382,7 +382,9 @@ export const methods = {
       if (!conv.chatName) delete conv.chatName
     }
     const channel = m.channelId ? this.state.channels.find(c => c.id === m.channelId) : undefined
-    const buttons = channel ? Boolean(kindOf(channel.type)?.kind.capabilities?.buttons) : platform === 'lark'
+    // Reply cards carry no buttons (split / why / details / pin): those are done in Harness conversations.
+    // Clicks on buttons of cards sent by older versions are still handled (handleBotAction).
+    const buttons = false
     // One prompt at a time per conversation, so each question gets its own answer.
     await this.serialize(`bot:${key}`, async () => {
       const started = Date.now()
@@ -762,7 +764,7 @@ export const methods = {
           xValue = r.rows.map(row => row[xi]).filter(v => v !== null && v !== undefined).at(-1)
         }
         const out = await this.drill({ resultId: r.resultId, mode: verb === 'drill' ? 'breakdown' : 'detail', dimension, xValue, sessionId: ctx.sessionId ?? undefined, actor, source: SOURCE(platform) })
-        const results = await this.withResultActions([out], { actor, sessionId: ctx.sessionId, channelId: ctx.channelId ?? a.channelId, platform, chatId: ctx.chatId ?? a.chatId, chatType: ctx.chatType, replyTo, depth: (ctx.depth ?? 0) + 1 })
+        const results = [out] // replies carry no buttons
         resultsCount = 1
         message = { title: out.title || what, text: verb === 'detail' ? `「${r.title || '结果'}」在 ${r.chart?.x}=${xValue} 的明细（最多 200 行）。` : `「${r.title || '结果'}」按 ${dimension} 拆分。`, results, footer }
       } else {

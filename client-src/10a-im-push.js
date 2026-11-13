@@ -28,7 +28,7 @@
     }
     const LEGACY_CAPS = {
       lark_webhook: { push: true, markdown: 'full', charts: 'native', tables: 'native', buttons: false, bot: false, listTargets: false, mentionAll: true },
-      lark_app: { push: true, markdown: 'full', charts: 'native', chartImages: true, tables: 'native', buttons: true, bot: true, listTargets: true, mentionAll: true },
+      lark_app: { push: true, markdown: 'full', charts: 'native', chartImages: true, tables: 'native', buttons: false, bot: true, listTargets: true, mentionAll: true },
     }
     /** Localized value of a { zh, en } object (or a plain string). */
     const L = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? (v[uiLang] ?? v.zh ?? v.en ?? '') : (v ?? ''))
@@ -63,7 +63,7 @@
               { key: 'receiveId', label: tx('im.receiveId'), type: 'text', required: true, placeholder: 'oc_xxx', target: true, help: tx('ch.f.receiveId') },
             ],
             capabilities: LEGACY_CAPS.lark_app,
-            setupSteps: { zh: ['im.help.lark_app', 'bot.step3', 'bot.step4', 'bot.step5', 'bot.step7', 'bot.step6'].map(t), en: ['im.help.lark_app', 'bot.step3', 'bot.step4', 'bot.step5', 'bot.step7', 'bot.step6'].map(t) },
+            setupSteps: { zh: ['im.help.lark_app', 'bot.step3', 'bot.step4', 'bot.step5', 'bot.step6'].map(t), en: ['im.help.lark_app', 'bot.step3', 'bot.step4', 'bot.step5', 'bot.step6'].map(t) },
           },
         ],
       }]

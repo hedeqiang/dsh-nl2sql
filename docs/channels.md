@@ -64,7 +64,7 @@ ChannelKind = {
     chartModes?: ('native'|'image'|'table')[], // selectable channel.chartMode values; first = default
                                                // (derived from charts/chartImages when omitted)
     tables: 'native' | 'markdown' | 'text',
-    buttons: boolean,                          // interactive buttons on pushed/bot messages
+    buttons: boolean,                          // interactive buttons (bot replies currently send none; old card tokens are still handled)
     bot: boolean,                              // inbound questions (no public URL needed)
     listTargets: boolean,                      // can list chats/groups the bot is in
     mentionAll: boolean,
@@ -151,6 +151,8 @@ migrates to `channel.bot` on the referenced channel.
 | Telegram | Bot API `sendMessage` / `sendPhoto` to chat ids | long polling `getUpdates` | inline keyboard (`callback_query`) | PNG (`sendPhoto`) |
 | WeCom 企业微信 | group robot webhook (markdown, image base64+md5) | AI bot long connection (`wss://openws.work.weixin.qq.com`, bot id + secret) | template card buttons where supported, else none | PNG via webhook image |
 | DingTalk 钉钉 | custom robot webhook (+ HMAC sign) | enterprise app robot over Stream (`/v1.0/im/bot/messages/get`), reply via `sessionWebhook` | ActionCard links only | PNG not uploadable via webhook → tables |
+
+Bot replies currently carry no buttons (`ActionSpec` is not attached); clicks on buttons of cards sent by older versions are still re-authorized and handled.
 
 Only verified behaviour should be claimed in the UI; anything tested against
 fakes only is labelled in `CHANGELOG.md`.

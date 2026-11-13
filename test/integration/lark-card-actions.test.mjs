@@ -112,9 +112,11 @@ function fakeSessions(answer) {
   return { controller, agents: { get: (id) => sessions.get(id) } }
 }
 let toolsRef
+let lastResultId
 const fake = fakeSessions(async (text, sid) => {
   const m = /Q:(.+?)(?:\n|$)/.exec(text)
   const out = await toolsRef.get('nl2sql_query').execute({ sql: m[1], title: '每日笔数', chart: { type: 'line', x: 'd', y: ['n'] } }, { agent: { id: sid } })
+  lastResultId = out.display.resultId
   return { text: `共 ${out.display.rowCount} 天`, metas: [out.display] }
 })
 
@@ -143,21 +145,23 @@ try {
     assert.equal(bot.status().state, 'connected')
   })
 
-  await test('answer card carries buttons with opaque tokens only', async () => {
+  await test('answer card carries no buttons; clicks on cards from older versions still work (tokens built directly)', async () => {
     await service.handleLarkMessage({ messageId: 'om_q1', chatId: 'oc_g', chatType: 'group', text: `Q:${SQL}`, mentionedBot: true, sender: { openId: 'ou_a' } })
     await waitReplies(1)
     const reply = lark.replies[0]
     assert.equal(reply.to, 'om_q1')
     assert.equal(reply.type, 'interactive')
-    const controls = controlsOf(reply.content)
-    const labels = controls.map(c => c.tag === 'button' ? c.text.content : 'select')
-    assert.ok(labels.includes('select') && labels.includes('为什么变化') && labels.includes('明细') && labels.includes('固定到看板'), labels.join(','))
-    const select = controls.find(c => c.tag === 'select_static')
-    assert.ok(select.options.some(o => o.value === 'chain_type'), 'chain_type is a candidate dimension')
-    assert.ok(select.options.length <= 6)
-    for (const c of controls) assert.deepEqual(Object.keys(c.behaviors[0].value).sort(), ['a', 't'])
-    assert.ok(!JSON.stringify(reply.content).includes('"r-'), 'no result ids in the card')
-    tokens = { drill: select.behaviors[0].value, ...Object.fromEntries(controls.filter(c => c.tag === 'button').map(c => [c.behaviors[0].value.a, c.behaviors[0].value])) }
+    assert.equal(controlsOf(reply.content).length, 0, 'no buttons on bot replies')
+    // Older cards carried opaque tokens; build the same ActionSpec to exercise the click path.
+    const conv = Object.values(service.state.botConversations).find(c => c.chatId === 'oc_g')
+    const resultId = lastResultId
+    assert.ok(resultId, 'the answer stored a result')
+    const actor = service.resolveActor({ platform: 'lark', userId: 'ou_a', chatId: 'oc_g', chatType: 'group' }).actor
+    const [r] = await service.withResultActions([service.lookupResult(resultId)], { actor, sessionId: conv.sessionId, channelId: conv.channelId ?? undefined, platform: 'lark', chatId: 'oc_g', chatType: 'group', replyTo: 'om_q1', depth: 0 })
+    const spec = r.actions
+    assert.ok(spec?.select && spec.buttons.length, JSON.stringify(spec))
+    for (const b of spec.buttons) assert.deepEqual(Object.keys(b.value).sort(), ['a', 't'])
+    tokens = { drill: spec.select.value, ...Object.fromEntries(spec.buttons.map(b => [b.value.a, b.value])) }
   })
 
   await test('breakdown click: toast in the ack (< 3 s), drill runs on MySQL, reply card in the thread', async () => {
@@ -170,7 +174,7 @@ try {
     assert.equal(reply.to, 'om_q1', 'replies to the original question')
     assert.match(JSON.stringify(reply.content), /按chain_type/)
     assert.ok(walk(reply.content.body).some(e => e.tag === 'chart' || e.tag === 'table' || e.tag === 'markdown'))
-    assert.ok(controlsOf(reply.content).length > 0, 'level-1 result also has buttons')
+    assert.equal(controlsOf(reply.content).length, 0, 'replies to clicks carry no buttons either')
     const hist = await call('listHistory', { limit: 5 })
     const h = hist.find(x => x.source === 'larkbot')
     assert.ok(h, 'drill audited with source larkbot')
@@ -178,12 +182,6 @@ try {
     assert.equal(h.actor?.name, '甲')
     const dl = await call('listDeliveries', { limit: 5 })
     assert.ok(dl.some(d => d.source === 'larkbot' && d.title === '拆分：chain_type' && d.status === 'ok'))
-    // depth cap: a level-1 drill card's token → level-2 card without buttons
-    const nested = controlsOf(reply.content).find(c => c.tag === 'select_static')
-    await sleep(2100)
-    await click({ openId: 'ou_a', value: nested.behaviors[0].value, option: nested.options[0].value })
-    await waitReplies(3)
-    assert.equal(controlsOf(lark.replies[2].content).length, 0, 'no buttons beyond depth 2')
   })
 
   await test('rate limit: a second click within 2 s is refused', async () => {
@@ -193,7 +191,7 @@ try {
     const second = await click({ openId: 'ou_b', value: tokens.why })
     assert.equal(second.resp.toast.type, 'warning')
     assert.match(second.resp.toast.content, /频繁/)
-    await waitReplies(4)
+    await waitReplies(3)
     assert.match(JSON.stringify(lark.replies.at(-1).content), /为什么变化|没有找到|对比/)
   })
 

@@ -1103,7 +1103,6 @@ const APP_SETUP = {
     '「权限管理」开通：im:message、im:message.p2p_msg:readonly、im:message.group_at_msg:readonly、im:message:send_as_bot、im:resource、im:chat:readonly、contact:user.base:readonly（需要按邮箱识别成员时再加 contact:user.email:readonly）。',
     '在「机器人」中启用该渠道使长连接在线，然后到「事件与回调 → 事件配置」选择「使用长连接接收事件」并保存。',
     '添加事件「接收消息 v2.0（im.message.receive_v1）」，创建版本并发布。',
-    '「事件与回调 → 回调配置」同样选择「使用长连接接收回调」，并添加回调「卡片回传交互（card.action.trigger）」，否则回答卡片上的「按维度拆分 / 为什么变化 / 明细 / 固定到看板」按钮点击无效。',
     '把机器人拉进群；群里需要 @机器人 才会响应。发送「帮助」查看命令（数据源、切换 <名称>、新对话）。',
   ],
   en: [
@@ -1112,7 +1111,6 @@ const APP_SETUP = {
     'Grant im:message, im:message.p2p_msg:readonly, im:message.group_at_msg:readonly, im:message:send_as_bot, im:resource, im:chat:readonly, contact:user.base:readonly (plus contact:user.email:readonly to match by email).',
     'Enable the bot for this channel so the long connection is online, then choose "Receive events through persistent connection" in Events & Callbacks.',
     'Subscribe to im.message.receive_v1, create and publish a version.',
-    'In Events & Callbacks → Callback configuration, also choose the persistent connection and add the callback "card.action.trigger" (card interaction); otherwise the Breakdown / Why / Details / Pin buttons on answer cards do nothing.',
     'Add the bot to groups; @ it to ask. Send "help" for commands.',
   ],
 }
@@ -1165,7 +1163,7 @@ export const kinds = [
     id: 'lark_app',
     platform: 'lark',
     label: { zh: '飞书应用机器人', en: 'Lark app bot' },
-    description: { zh: '企业自建应用（App ID / Secret）：推送到群、个人或邮箱，可上传图片；可开启机器人，在群里 @ 提问（长连接，无需公网地址），回答卡片带交互按钮。', en: 'Custom app (App ID / Secret): push to a chat, user or email, upload images; optional bot answering @ mentions over the long connection (no public URL) with interactive buttons.' },
+    description: { zh: '企业自建应用（App ID / Secret）：推送到群、个人或邮箱，可上传图片；可开启机器人，在群里 @ 提问（长连接，无需公网地址）。', en: 'Custom app (App ID / Secret): push to a chat, user or email, upload images; optional bot answering @ mentions over the long connection (no public URL).' },
     fields: [
       DOMAIN_FIELD,
       { key: 'appId', label: { zh: 'App ID', en: 'App ID' }, type: 'text', required: true, placeholder: 'cli_xxxxxxxxxxxxxxxx' },
@@ -1179,7 +1177,7 @@ export const kinds = [
       ] },
       { key: 'receiveId', label: { zh: '接收者 ID', en: 'Receiver ID' }, type: 'text', required: true, placeholder: 'oc_…', target: true, help: { zh: '推送目标；选择群时可点「列出群聊」', en: 'Push target; use "List chats" to pick a chat' } },
     ],
-    capabilities: { push: true, markdown: 'full', charts: 'native', chartImages: true, chartModes: ['native', 'image', 'table'], tables: 'native', tableRows: 50, files: true, buttons: true, bot: true, listTargets: true, mentionAll: true, maxMessageBytes: 28000 },
+    capabilities: { push: true, markdown: 'full', charts: 'native', chartImages: true, chartModes: ['native', 'image', 'table'], tables: 'native', tableRows: 50, files: true, buttons: false, bot: true, listTargets: true, mentionAll: true, maxMessageBytes: 28000 },
     setupSteps: APP_SETUP,
     validate(input, existing) {
       const c = input.config ?? {}
