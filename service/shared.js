@@ -17,6 +17,8 @@ export const SUPPORTED_TYPES = Object.keys(DIALECTS)
 export const RPC_PATH = '/api/nl2sql.rpc'
 export const ROLE_RANK = { viewer: 0, analyst: 1, admin: 2 }
 export const PRESET_ID = 'nl2sql'
+/** Agent preset of IM bot conversations (cordis.patch.yml): the core rules plus bot rules, no ask_user tool. */
+export const BOT_PRESET_ID = 'nl2sql-bot'
 export const CREDENTIAL_SCOPE = 'nl2sql'
 export const RESULT_CACHE_LIMIT = 300
 
@@ -227,17 +229,56 @@ export const DIALECT_HINTS = {
   sqlite: sqliteDialectHints,
 }
 
-export function summarize(columns, rows) {
+/** The column that labels each row of a result (chart x, else the first time column, else the first text column), or -1. */
+export function labelColumnIndex(columns, x) {
+  const usable = (c) => c && !c.masked && c.kind !== 'number'
+  const byName = x ? columns.findIndex(c => c.name === x) : -1
+  if (byName >= 0 && usable(columns[byName])) return byName
+  const time = columns.findIndex(c => usable(c) && c.kind === 'time')
+  if (time >= 0) return time
+  return columns.findIndex(usable)
+}
+
+const round = (n) => Number(Number(n).toFixed(4))
+
+/**
+ * Per-column statistics of a result, for models that may not see its rows.
+ * Numbers: min / max / sum / avg; with a label column (time or category) the
+ * labels of the max and min rows; for time series also the first and last
+ * point and the change between them — so trends and leaders can be stated
+ * without the rows. Text: distinct count and the most frequent values, or the
+ * first values in result order when every value is distinct (GROUP BY labels).
+ */
+export function summarize(columns, rows, { x } = {}) {
+  const li = labelColumnIndex(columns, x)
+  const label = (r) => (li >= 0 && r[li] !== null && r[li] !== undefined ? String(r[li]).slice(0, 60) : undefined)
+  // Time series (one row per time label) are summarised in time order; long-format multi-series results are not.
+  const isSeries = li >= 0 && columns[li].kind === 'time' && new Set(rows.map(r => String(r[li]))).size === rows.length
+  const ordered = isSeries ? [...rows].sort((a, b) => String(a[li] ?? '').localeCompare(String(b[li] ?? ''))) : rows
   return columns.map((c, i) => {
     const values = rows.map(r => r[i]).filter(v => v !== null && v !== undefined)
     const s = { name: c.name, kind: c.kind, nonNull: values.length }
     if (c.kind === 'number') {
-      const nums = values.map(Number).filter(Number.isFinite)
-      if (nums.length) {
+      const points = ordered.filter(r => r[i] !== null && r[i] !== undefined && r[i] !== '').map(r => ({ v: Number(r[i]), at: label(r) })).filter(p => Number.isFinite(p.v))
+      if (points.length) {
+        const nums = points.map(p => p.v)
         s.min = Math.min(...nums)
         s.max = Math.max(...nums)
-        s.sum = Number(nums.reduce((a, b) => a + b, 0).toFixed(4))
-        s.avg = Number((s.sum / nums.length).toFixed(4))
+        s.sum = round(nums.reduce((a, b) => a + b, 0))
+        s.avg = round(s.sum / nums.length)
+        if (li >= 0) {
+          s.maxAt = points.find(p => p.v === s.max).at
+          s.minAt = points.find(p => p.v === s.min).at
+        }
+        // Trend only for time series: between categories, first → last means nothing.
+        if (points.length >= 2 && isSeries) {
+          const first = points[0]
+          const last = points[points.length - 1]
+          s.first = { at: first.at, value: first.v }
+          s.last = { at: last.at, value: last.v }
+          s.change = round(last.v - first.v)
+          if (first.v !== 0) s.changePct = round(((last.v - first.v) / Math.abs(first.v)) * 100)
+        }
       }
     } else if (c.kind === 'time') {
       const sorted = values.map(String).sort()
@@ -246,11 +287,13 @@ export function summarize(columns, rows) {
       const counts = new Map()
       for (const v of values) counts.set(String(v), (counts.get(String(v)) ?? 0) + 1)
       s.distinct = counts.size
-      s.top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([value, count]) => ({ value: value.slice(0, 60), count }))
+      if (counts.size === values.length && values.length > 1) s.firstValues = [...counts.keys()].slice(0, 5).map(v => v.slice(0, 60))
+      else s.top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([value, count]) => ({ value: value.slice(0, 60), count }))
     }
     return s
   })
 }
+
 
 // ------------------------------------------------------------------ service
 

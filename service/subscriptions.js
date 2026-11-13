@@ -456,7 +456,7 @@ function registerTools(ctx, service, { textBlock }) {
   const fail = (fn) => async (args, exec) => {
     try { return await fn(args ?? {}, exec) } catch (error) { throw error instanceof UserError ? new Error(error.message) : error }
   }
-  const out = { schema: { type: 'object' }, render: (_args, value) => textBlock(JSON.stringify(value, null, 1)) }
+  const out = { schema: { type: 'object' }, render: (_args, value) => textBlock(JSON.stringify(value)) }
   const short = (x) => ({ id: x.id, kind: x.kind, title: x.title, schedule: x.schedule, ...(x.conditionText ? { condition: x.conditionText } : {}), datasource: x.datasourceName, status: x.status, createdBy: x.createdBy?.name, ...(x.lastError ? { lastError: x.lastError } : {}) })
   ctx.tools.register({
     name: 'nl2sql_subscribe',

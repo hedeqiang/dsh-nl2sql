@@ -510,7 +510,7 @@ export const FEATURE = {
       },
       output: {
         schema: { type: 'object' },
-        render: (_args, value) => textBlock(JSON.stringify(value.model, null, 1)),
+        render: (_args, value) => textBlock(JSON.stringify(value.model)),
         presentationMeta: (_args, value) => value.display,
       },
       isConcurrencySafe: () => true,

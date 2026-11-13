@@ -734,7 +734,7 @@ export const FEATURE = {
       },
       output: {
         schema: { type: 'object' },
-        render: (_args, value) => textBlock(JSON.stringify(value, null, 1)),
+        render: (_args, value) => textBlock(JSON.stringify(value)),
         presentationMeta: (_args, value) => JSON.parse(JSON.stringify({ freshness: { datasource: value.datasource, now: value.now, tables: (value.tables ?? []).slice(0, 30), warnings: value.warnings ?? [] } })),
       },
       isConcurrencySafe: () => true,

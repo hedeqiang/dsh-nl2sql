@@ -9,6 +9,14 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DIALECT_HINTS, SENSITIVE_RULES_VERSION, UserError, classifyColumn, classifyTable, inferRelations, maskValue, newId, requireText, singular, upsert } from './shared.js'
 
+/** Glossary terms / metrics inlined in the schema overview before it switches to the ones relevant to the question. */
+export const KNOWLEDGE_INLINE = 30
+/**
+ * Characters of table detail in one nl2sql_schema call. The agent preset trims tool results
+ * above 16384 characters to head + tail, which would silently drop columns in the middle.
+ */
+export const SCHEMA_DETAIL_MAX = 12000
+
 /** Character bigrams (whitespace removed, works for Chinese) plus ASCII words of 3+ characters. */
 export function textGrams(text) {
   const s = String(text ?? '').toLowerCase().replace(/\s+/g, '')
@@ -237,13 +245,26 @@ export const methods = {
       }
       const k = this.knowledgeFor(ds.id)
       if (ds.description) lines.push(`business context: ${ds.description}`)
-      if (k.glossary.length) {
-        lines.push('glossary (business term => meaning / SQL hint):')
-        for (const g of k.glossary) lines.push(`- ${g.term}${g.synonyms?.length ? ` (${g.synonyms.join('/')})` : ''} => ${g.definition}${g.sql ? ` [SQL: ${g.sql}]` : ''}`)
+      // A large knowledge base is not inlined whole: the entries most relevant to the question, then the rest by name.
+      const found = question && (k.glossary.length > KNOWLEDGE_INLINE || k.metrics.length > KNOWLEDGE_INLINE) ? this.searchKnowledge(ds.id, question, KNOWLEDGE_INLINE) : null
+      const pickInline = (list, relevant) => {
+        if (list.length <= KNOWLEDGE_INLINE) return { inline: list, rest: [] }
+        const ids = new Set((relevant ?? []).map(x => x.id))
+        const inline = relevant ? list.filter(x => ids.has(x.id)) : list.slice(0, KNOWLEDGE_INLINE)
+        const kept = new Set(inline.map(x => x.id))
+        return { inline, rest: list.filter(x => !kept.has(x.id)) }
       }
+      const gl = pickInline(k.glossary, found?.glossary)
+      if (k.glossary.length) {
+        lines.push(`glossary (business term => meaning / SQL hint)${gl.rest.length ? `, ${gl.inline.length} of ${k.glossary.length} ${found ? 'most relevant to the question' : 'shown'}` : ''}:`)
+        for (const g of gl.inline) lines.push(`- ${g.term}${g.synonyms?.length ? ` (${g.synonyms.join('/')})` : ''} => ${g.definition}${g.sql ? ` [SQL: ${g.sql}]` : ''}`)
+        if (gl.rest.length) lines.push(`other terms (call nl2sql_knowledge action=search for their definitions): ${gl.rest.map(g => g.term).join(', ')}`)
+      }
+      const mt = pickInline(k.metrics, found?.metrics)
       if (k.metrics.length) {
-        lines.push('metrics (use these definitions exactly when the user asks for them):')
-        for (const m of k.metrics) lines.push(`- ${m.name}${m.unit ? ` (${m.unit})` : ''}: ${m.expression}${m.table ? ` FROM ${m.table}` : ''}${m.filter ? ` WHERE ${m.filter}` : ''}${m.timeColumn ? `; time column ${m.timeColumn}` : ''}${m.description ? ` — ${m.description}` : ''}`)
+        lines.push(`metrics (use these definitions exactly when the user asks for them)${mt.rest.length ? `, ${mt.inline.length} of ${k.metrics.length} ${found ? 'most relevant to the question' : 'shown'}` : ''}:`)
+        for (const m of mt.inline) lines.push(`- ${m.name}${m.unit ? ` (${m.unit})` : ''}: ${m.expression}${m.table ? ` FROM ${m.table}` : ''}${m.filter ? ` WHERE ${m.filter}` : ''}${m.timeColumn ? `; time column ${m.timeColumn}` : ''}${m.description ? ` — ${m.description}` : ''}`)
+        if (mt.rest.length) lines.push(`other metrics (query them by name with nl2sql_metric): ${mt.rest.map(m => m.name).join(', ')}`)
       }
       if (k.examples.length) lines.push(`${k.examples.length} verified question→SQL examples exist; call nl2sql_knowledge action=search with the user's question to reuse them.`)
       lines.push('Call nl2sql_schema with `tables` for full column comments, indexes and enum values.')
@@ -252,23 +273,35 @@ export const methods = {
     const notes = this.knowledgeFor(ds.id).notes
     const wanted = new Set(tableNames.map(n => n.toLowerCase()))
     const missing = tableNames.filter(n => !schema.tables.some(t => t.name.toLowerCase() === n.toLowerCase()))
+    // Stay below the size at which tool results get trimmed in the middle (losing columns): later tables are deferred.
+    const deferred = []
+    let size = 0
+    let described = 0
     for (const t of schema.tables) {
       if (!wanted.has(t.name.toLowerCase())) continue
-      lines.push(`## ${t.name} (${t.type.toLowerCase()}, role=${t.role}, ~${t.rows ?? '?'} rows)${t.comment ? ` — ${t.comment}` : ''}`)
-      if (notes[t.name]) lines.push(`note: ${notes[t.name]}`)
+      const block = []
+      block.push(`## ${t.name} (${t.type.toLowerCase()}, role=${t.role}, ~${t.rows ?? '?'} rows)${t.comment ? ` — ${t.comment}` : ''}`)
+      if (notes[t.name]) block.push(`note: ${notes[t.name]}`)
       for (const c of t.columns) {
         const note = notes[`${t.name}.${c.name}`]
         let line = `- ${c.name} ${c.columnType}${c.nullable ? '' : ' NOT NULL'}${c.key ? ` ${c.key}` : ''}${c.roles.length ? ` [${c.roles.join(',')}]` : ''}${c.comment ? ` — ${c.comment}` : ''}${note ? ` (note: ${note})` : ''}`
         if (c.values && settings.sampleMode !== 'off' && !(settings.maskSensitive && c.roles.includes('sensitive'))) {
           line += ` values: ${c.values.map(v => `${JSON.stringify(v.value)}(${v.count})`).join(', ')}${c.distinct === '>12' ? ', …' : ''}`
         }
-        lines.push(line)
+        block.push(line)
       }
-      if (t.indexes.length) lines.push(`indexes: ${t.indexes.map(i => `${i.unique ? 'UNIQUE ' : ''}${i.name}(${i.columns.join(',')})`).join('; ')}`)
+      if (t.indexes.length) block.push(`indexes: ${t.indexes.map(i => `${i.unique ? 'UNIQUE ' : ''}${i.name}(${i.columns.join(',')})`).join('; ')}`)
       const rel = schema.relations.filter(r => r.from.table === t.name || r.to.table === t.name)
-      if (rel.length) lines.push(`relations: ${rel.map(r => `${r.from.table}.${r.from.column}->${r.to.table}.${r.to.column}(${r.kind})`).join('; ')}`)
-      lines.push('')
+      if (rel.length) block.push(`relations: ${rel.map(r => `${r.from.table}.${r.from.column}->${r.to.table}.${r.to.column}(${r.kind})`).join('; ')}`)
+      block.push('')
+      const blockSize = block.reduce((n, l) => n + l.length + 1, 0)
+      // The first table is always described, however wide.
+      if (described && size + blockSize > SCHEMA_DETAIL_MAX) { deferred.push(t.name); continue }
+      lines.push(...block)
+      size += blockSize
+      described++
     }
+    if (deferred.length) lines.push(`not described (output size limit): ${deferred.join(', ')} — call nl2sql_schema again with \`tables\` set to these.`)
     if (missing.length) lines.push(`unknown tables: ${missing.join(', ')}`)
     return lines.join('\n')
   },

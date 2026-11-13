@@ -4,10 +4,13 @@ This document describes how the plugin is organised and how to work on it. For s
 
 ## How the plugin fits into DeepSeek Harness
 
-dsh-nl2sql is a Harness **bundle** (`package.json` → `dsh.bundle.patch`). Its patch, [`cordis.patch.yml`](../cordis.patch.yml), adds two rows to the Harness composition:
+dsh-nl2sql is a Harness **bundle** (`package.json` → `dsh.bundle.patch`). Its patch, [`cordis.patch.yml`](../cordis.patch.yml), adds three rows to the Harness composition:
 
 - `nl2sql` — the Host plugin ([`index.js`](../index.js)). It creates the service, registers the `nl2sql_*` agent tools and the page RPC endpoint `/api/nl2sql.rpc`, and starts the scheduler and IM bots.
-- `preset-nl2sql` — the *Data Q&A* agent preset: system rules for answering data questions with the tools.
+- `preset-nl2sql` — the *Data Q&A* agent preset (`nl2sql`): page conversations, scheduled reports and evaluation runs.
+- `preset-nl2sql-bot` — the preset of conversations created by IM bots (`nl2sql-bot`): no `ask_user_question` tool; the card layout and chat rules that used to be repeated in every bot message.
+
+Both presets share one set of core rules through the YAML anchor `&nl2sql-core` (the persona `prefix`); each adds its own rules as the persona `suffix`. Bot messages carry only what changes per message: who asks where, and the data-source note.
 
 The browser side (`dsh.client` in `package.json`) is a single module, [`lib/client.js`](../lib/client.js), that renders the Data Q&A page and the tool result views in conversations.
 
@@ -57,7 +60,7 @@ New features plug in without editing `index.js` or the page shell:
 
 - **Server:** create `service/<feature>.js` exporting `{ name, methods, rpc(service), tools(ctx, service, helpers), start?(ctx, service) }` and add it to [`service/features.js`](../service/features.js). `methods` are mixed into the service; a method named `jobs_<feature>(now)` returns scheduler jobs `[{ id, due(now), run() }]` that the in-process scheduler runs (see `lastDailySlot` in `service/shared.js`). Queries must go through `runQuery` so read-only admission, access policies, row-level rules, masking and audit apply.
 - **Client:** create `client-src/2Nx-<feature>.js` and register UI through `extend.*` (defined in `client-src/06-utilities.js`): `adminSections` (with an optional `group`), `dashboardMenu`, `dashboardBar`, `resultMenu`, `resultPanels`, `schemaPanels`, `askPanels` and `toolViews`. `client-src/99-apply.js` must stay last: it closes the module factory.
-- **Agent rules:** describe new tools in the preset rules in `cordis.patch.yml`.
+- **Agent rules:** describe new tools in the preset rules in `cordis.patch.yml` — in the shared core (`&nl2sql-core`) unless the tool only applies to page or bot conversations. Keep tool results the model reads compact (`JSON.stringify` without indentation) and under the 16384-character pruning threshold of the presets.
 
 Existing feature modules: `freshness` (data health), `reconcile`, `subscriptions`, `proactive` (digests, goals, forecast, alert attribution), `present` (PPT, long image, presentation mode, Bitable) and `mcp`.
 

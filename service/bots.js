@@ -23,7 +23,7 @@ import { parseSelect } from '../analysis.js'
 import { getAdapter, kindOf, loadAdapters } from '../channels/index.js'
 import { toInboundAction, toInboundMessage } from '../channels/lark.js'
 import { PLATFORM_LABEL } from './access.js'
-import { PRESET_ID, UserError, hashText, oneOf, toUserError } from './shared.js'
+import { BOT_PRESET_ID, PRESET_ID, UserError, hashText, oneOf, toUserError } from './shared.js'
 
 export const ACTION_TOKEN_TTL_MS = 7 * 24 * 3600 * 1000
 const ACTION_TOKEN_MAX = 5000
@@ -397,7 +397,7 @@ export const methods = {
       const started = Date.now()
       // Another message of this conversation may have created the session meanwhile.
       const latest = convs[key]
-      if (latest?.sessionId && !conv.sessionId) { conv.sessionId = latest.sessionId; if (latest.group) conv.group = latest.group }
+      if (latest?.sessionId && !conv.sessionId) { conv.sessionId = latest.sessionId; if (latest.group) conv.group = latest.group; if (latest.preset) conv.preset = latest.preset }
       const prepare = async (sessionId) => {
         conv.sessionId = sessionId
         conv.datasourceId = ds.id
@@ -414,26 +414,27 @@ export const methods = {
       const dsLine = allowedDs.length > 1
         ? (conv.datasourcePinned
           ? `数据源：${ds.name}（群内已用「切换」指定，请只查询这个数据源）。`
-          : `当前数据源：${ds.name}${routed?.ds ? '（按问题自动选择）' : ''}。该成员可用的数据源：\n${await this.datasourceCatalog(allowedDs)}\n请先判断问题属于哪个数据源：若不是当前数据源，先用 nl2sql_datasource action=use 切换再查询；在回答开头注明使用的数据源。`)
+          : `当前数据源：${ds.name}${routed?.ds ? '（按问题自动选择）' : ''}。该成员可用的数据源：\n${await this.datasourceCatalog(allowedDs)}`)
         : `数据源：${ds.name}。`
-      const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（${dsLine}\n回答会以${name}消息卡片发回该聊天，卡片 = 你的文字 + 下面附带的查询结果。排版要求：
-- 先一句话给结论（数字 + 方向，例如「上周充值 1,245 单，比前一周少 25.5%，但金额多 51.3%」），再最多 3 条要点解释原因或口径；不要把结果表里的数字逐项再抄一遍，结果会以表格展示在下方。
-- 数字统一格式：千分位、最多 2 位小数、百分比带 % 和正负号，单位写在数字后（U、单、笔），全文同一指标用同一单位，不要混用「万」和完整数字。
-- 查询结果的列名用读者看得懂的中文（如 上周订单数、前周订单数、订单环比），不要用 _pct、_U 这类技术后缀；做对比时让列成对出现（上周X / 前周X），卡片会自动排成对比表。
-- 口径说明（统计范围、时区、去重方式）放在最后一行，简短。
-- 排查中间步骤、查错表或查不到数据的探索性查询，在 nl2sql_query 中设 show=false，卡片只展示支撑结论的结果（一般 1–2 个）。
-不要调用 nl2sql_send，也不要向用户提问——有歧义时说明你的假设后直接回答。${actor.role === 'viewer' ? '该成员是只读角色：只能用 nl2sql_metric 查询指标库，或复用 nl2sql_knowledge 中已验证的样例 SQL；不能自由编写 SQL。' : ''}）`
+      // Card layout, the no-questions rule and viewer limits live in the bot preset (cordis.patch.yml, nl2sql-bot);
+      // the message carries only who asks where and the data source note, which change per message.
+      const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（${dsLine}）`
       const requestId = platform === 'lark' ? `lark-${m.messageId}` : `${platform}-${m.chatId}-${m.messageId}`
       if (conv.sessionId && this.state.sessions[conv.sessionId] !== ds.id) { this.state.sessions[conv.sessionId] = ds.id; await this.save() }
       const group = { key: `bot-${m.channelId ?? platform}`, title: channel ? `${name} · ${channel.name}` : `${name}机器人` }
       // Conversations started before sessions were grouped by channel move to a new session in the group once.
       if (conv.sessionId && conv.group !== group.key && !this.state.settings.botCwd) conv.sessionId = null
       conv.group = group.key
-      const turn = await this.runAgentTurn({ sessionId: conv.sessionId, title: `${name} · ${conv.chatName ?? actor.name}`, requestId, text: prompt, prepare, timeoutMs: 600000, group })
+      // Sessions created before the bot preset existed run the page preset (no card rules): start a new one once.
+      if (conv.sessionId && conv.preset !== BOT_PRESET_ID) conv.sessionId = null
+      conv.preset = BOT_PRESET_ID
+      // The turn outlasts the data source's query time limit (up to 10 min) by two minutes, and is at least 10 minutes.
+      const turnTimeoutMs = Math.min(720000, Math.max(600000, (this.settingsFor(ds).timeoutMs ?? 15000) + 120000))
+      const turn = await this.runAgentTurn({ sessionId: conv.sessionId, title: `${name} · ${conv.chatName ?? actor.name}`, requestId, text: prompt, prepare, timeoutMs: turnTimeoutMs, group, preset: BOT_PRESET_ID })
       const usedDs = this.findDatasource(this.state.sessions[conv.sessionId]) ?? ds
       if (usedDs.id !== conv.datasourceId) { conv.datasourceId = usedDs.id; convs[key] = conv }
       let body = turn.text
-      if (turn.reason === 'timeout') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（查询超过 10 分钟仍未完成，已停止。请缩小范围后重试。）</font>`
+      if (turn.reason === 'timeout') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（查询超过 ${Math.round(turnTimeoutMs / 60000)} 分钟仍未完成，已停止。请缩小范围后重试。）</font>`
       if (turn.reason === 'input-required') body = `${body ? `${body}\n\n` : ''}<font color='grey'>（需要在 Harness 中确认后才能继续，已取消本次回答。）</font>`
       const results = selectReplyResults(turn.resultIds.map(id => this.lookupResult(id)).filter(Boolean).filter(r => { try { this.assertResultAccess(r, { ...actor, kind: platform }); return true } catch { return false } }))
       // Buttons (拆分 / 为什么变化 / 明细 / 固定到看板) carry opaque tokens only.
@@ -539,13 +540,13 @@ export const methods = {
     }
   },
 
-  async runAgentTurn({ sessionId, title, requestId, text, prepare, timeoutMs = 300000, group }) {
+  async runAgentTurn({ sessionId, title, requestId, text, prepare, timeoutMs = 300000, group, preset = PRESET_ID }) {
     const controller = this.ctx.get('sessionController')
     const registry = this.ctx.get('workspaceRegistry')
     const create = async () => {
       // An explicit bot working directory (settings.botCwd) wins; otherwise sessions go to the group's workspace.
       const where = this.state.settings.botCwd ? { cwd: this.state.settings.botCwd } : await this.sessionGroup(group)
-      const created = await controller.create({ agentPreset: PRESET_ID, ...where })
+      const created = await controller.create({ agentPreset: preset, ...where })
       try { await controller.rename?.({ sessionId: created.sessionId, title }) } catch {}
       return created.sessionId
     }

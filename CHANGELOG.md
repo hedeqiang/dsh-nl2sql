@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-13
+
+### Added
+- **IM bot agent preset:** conversations created by IM bots use a new preset, *数据问答 · IM 机器人* (`nl2sql-bot`). It has the same core rules as *数据问答*, plus the bot rules (card layout, data-source routing, read-only members, schedules and alerts for the chat), and no `ask_user_question` tool, so a bot can no longer stall on a question nobody can answer. Bot messages now carry only the asker, the chat and the data-source note instead of repeating about 800 characters of layout rules in every message. An existing bot conversation starts a new session once, on its next message.
+
+### Changed
+- **Result statistics the model can use:** with the default privacy setting (statistical summary), each measure now also gets the label of its highest and lowest row (`maxAt` / `minAt`), and time series get the first and last point and the change between them, in time order. GROUP BY labels are listed in result order instead of as counts of 1. Rows are still never sent in this mode.
+- Every query result tells the model what it can see (`note`): statistics only, the first *N* rows, or no values. The rules ask it to state only figures it was given.
+- **Shorter, consistent agent rules:** the *数据问答* rules were reorganised (19 rules → 8 core rules plus page rules). Dialect hints come from the schema overview only, and page-only rules (asking back, pushing to channels, scheduled reports) are no longer sent to bot sessions, or IM-only rules to page sessions.
+- The rules now tell the agent to pass the user's question to `nl2sql_schema`, which large databases (more than 80 tables) need to describe the most relevant tables in full. The previous wording ("no arguments") stopped this ranking from working.
+- With more than 30 glossary terms or metrics, the schema overview lists in full only those relevant to the question and names the rest, instead of inlining the whole knowledge base.
+- `nl2sql_schema` with `tables` stays under 12,000 characters. Tables beyond that are listed by name for a follow-up call, so the context pruner cannot cut columns out of the middle of the result.
+- Tool results are compact JSON (no indentation), which shortens each result row from one line per cell to one line in total.
+- `nl2sql_query`, `nl2sql_metric` and `nl2sql_drill` may run in parallel (the connection pools hold three connections).
+- An IM bot answer may take the data source's query time limit plus two minutes (at least 10, at most 12 minutes); the timeout notice states the actual limit.
+- State saves requested while a write is queued share that write, so busy bots and schedulers rewrite `state.json` once per burst instead of once per call.
+
+### Fixed
+- When the database reports an unknown column, the error the agent sees lists the real columns of the tables in the statement, so it can fix the name in one retry.
+
 ## [0.15.3] - 2026-11-13
 
 ### Changed

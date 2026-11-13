@@ -644,8 +644,8 @@ export const methods = {
       view.rowsReturned = view.rows.length
       if (result.rowCount > view.rows.length) view.note = `Only the first ${view.rows.length} of ${result.rowCount} rows are returned (privacy setting). Aggregate in SQL instead of paging.`
     } else if (privacy === 'summary') {
-      view.summary = summarize(result.columns, result.rows)
-      view.note = 'Rows are not shared with external models by the privacy setting; per-column statistics are returned. Aggregate in SQL to get specific figures.'
+      view.summary = summarize(result.columns, result.rows, { x: result.chart?.x })
+      view.note = 'Rows are not shared with external models by the privacy setting; per-column statistics are returned (first/last/change in time or result order, maxAt/minAt = label of the max/min row). Aggregate in SQL to get other specific figures.'
     } else {
       view.note = 'The privacy setting shares no row data or statistics with external models; only the row count and columns are returned.'
     }
@@ -856,7 +856,7 @@ export const methods = {
   /** resources/read. Returns { contents } or throws RpcError(not found). */
   async mcpReadResource(uri, actor, notFoundCode) {
     const notFound = () => new RpcError(notFoundCode, 'Resource not found', { uri })
-    const json = (value) => ({ contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(value, null, 1) }] })
+    const json = (value) => ({ contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(value) }] })
     let m = /^nl2sql:\/\/result\/([^/]+)$/.exec(uri)
     if (m) {
       const r = this.lookupResult(decodeURIComponent(m[1]))
@@ -1229,7 +1229,7 @@ export const methods = {
             ctx.callInfo = { datasource: tctx.ds?.name ?? value?.datasource, rows: value?.rowCount, sql: value?.sql }
             for (const w of this.mcpResultWarnings(value)) log(w.level, w.data)
             for (const r of value?.results ?? []) for (const w of this.mcpResultWarnings(r.result)) log(w.level, w.data)
-            const text = typeof value?.text === 'string' && Object.keys(value).length <= 3 ? value.text : JSON.stringify(value, null, 1)
+            const text = typeof value?.text === 'string' && Object.keys(value).length <= 3 ? value.text : JSON.stringify(value)
             const content = [{ type: 'text', text }]
             if (feat.resourceLinks) {
               const ids = [value?.resultId, ...(value?.results ?? []).map(r => r.result?.resultId), ...Object.values(value?.resultIds ?? {})].filter(Boolean)

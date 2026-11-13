@@ -166,7 +166,7 @@ The lexer is a first line of defence, not a substitute for database permissions:
 | Uploaded files | `~/.dsh/nl2sql/files/` |
 | Database passwords, SSH keys, bot secrets | the Harness credential store |
 
-**Settings → Data shown to the model** controls what query data reaches the LLM: nothing, per-column statistics (default) or the first *N* rows. Sensitive columns are masked by default. Anything you push to an IM platform leaves your machine.
+**Settings → Data shown to the model** controls what query data reaches the LLM: nothing, per-column statistics (default; for time series also the first and last point and the change, and for every measure the label of its highest and lowest row) or the first *N* rows. The model is told which of these it sees, so it does not state figures it was not given. Sensitive columns are masked by default. Anything you push to an IM platform leaves your machine.
 
 ## Limitations
 

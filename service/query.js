@@ -121,6 +121,9 @@ export const methods = {
       const cancelled = error.code === 'query/cancelled' || call?.signal?.aborted
       this.audit({ ds, sessionId, source, sql: admitted.sql, title, status: cancelled ? 'cancelled' : 'error', error: cancelled ? 'cancelled by the client' : error.message, elapsedMs: Date.now() - started, actor })
       await this.save()
+      // The agent fixes a wrong column name in one retry when the error lists the real ones.
+      const hint = !cancelled && source === 'agent' ? this.unknownColumnHint(error, admitted.sql, filterSchema(fullSchema, policy), dialect) : ''
+      if (hint) throw new UserError(error.code ?? 'db/error', `${error.message}\n${hint}`)
       throw error
     }
     const elapsedMs = Date.now() - started
@@ -280,6 +283,20 @@ export const methods = {
     return next
   },
 
+  /**
+   * For "unknown column" database errors: the visible columns of the tables the statement
+   * references (policy-filtered schema), or '' when the error is something else.
+   */
+  unknownColumnHint(error, sql, schema, dialect) {
+    const message = String(error?.message ?? '')
+    if (!schema?.tables || !/unknown column|no such column|column .{1,120} does not exist|ER_BAD_FIELD_ERROR|42703|cannot be resolved|unknown field/i.test(`${message} ${error?.code ?? ''}`)) return ''
+    let refs = []
+    try { refs = referencedTables(sql, schema.tables, { dialect }) } catch { return '' }
+    const lines = refs.slice(0, 4).map(name => schema.tables.find(t => t.name === name)).filter(Boolean)
+      .map(t => `columns of ${t.name}: ${t.columns.slice(0, 120).map(c => c.name).join(', ')}${t.columns.length > 120 ? ', …' : ''}`)
+    return lines.length ? `${lines.join('\n')}\nUse only these column names (or call nl2sql_schema with \`tables\` for details).` : ''
+  },
+
   /** The part of a result the model may see, per privacy settings. */
   modelView(result) {
     const ds = this.findDatasource(result.datasourceId)
@@ -293,8 +310,16 @@ export const methods = {
       columns: result.columns.map(c => `${c.name}:${c.kind}${c.masked ? '(masked)' : ''}`),
       chart: result.chart,
     }
-    if (settings.resultToModel === 'summary') view.summary = summarize(result.columns, result.rows)
-    if (settings.resultToModel === 'rows') view.rows = result.rows.slice(0, settings.modelRows)
+    // Tell the model what it can see, so it does not state numbers it was never given.
+    if (settings.resultToModel === 'summary') {
+      view.summary = summarize(result.columns, result.rows, { x: result.chart?.x })
+      if (result.rowCount > 1) view.note = 'Rows are withheld by the privacy setting; only per-column statistics are shown (first/last/change in time or result order, maxAt/minAt = label of the max/min row). State only figures given here; for any other specific value, say it is in the chart/table or run a narrower aggregate query.'
+    }
+    if (settings.resultToModel === 'rows') {
+      view.rows = result.rows.slice(0, settings.modelRows)
+      if (result.rowCount > view.rows.length) view.note = `Only the first ${view.rows.length} of ${result.rowCount} rows are shown; do not describe rows you cannot see — aggregate in SQL instead.`
+    }
+    if (settings.resultToModel === 'none') view.note = 'The privacy setting withholds all values; you see only columns and the row count. Do not state any figures — describe what the result shows and point the user to the chart/table.'
     view.privacy = settings.resultToModel
     return view
   },

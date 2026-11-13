@@ -267,6 +267,25 @@ try {
       await assert.rejects(other.call('importConfig', { data: exported, mode: 'bogus' }), /mode/)
     } finally { await other.close() }
   })
+
+  await test('state saves requested together share one write, which holds the latest state', async () => {
+    const { readFileSync } = await import('node:fs')
+    await service.writing
+    const saves = []
+    for (let i = 0; i < 20; i++) { service.state.settings.coalesceProbe = i; saves.push(service.save()) }
+    assert.equal(new Set(saves).size, 1, '20 saves while idle → one write')
+    await Promise.all(saves)
+    assert.equal(JSON.parse(readFileSync(service.file, 'utf8')).settings.coalesceProbe, 19, 'the file holds the latest state')
+    // A save requested during a write gets a write of its own after it.
+    const first = service.save()
+    await Promise.resolve()
+    service.state.settings.coalesceProbe = 'later'
+    const second = service.save()
+    await Promise.all([first, second])
+    assert.equal(JSON.parse(readFileSync(service.file, 'utf8')).settings.coalesceProbe, 'later')
+    delete service.state.settings.coalesceProbe
+    await service.save()
+  })
 } finally {
   await app.close()
 }

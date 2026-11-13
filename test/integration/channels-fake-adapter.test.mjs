@@ -221,6 +221,22 @@ try {
     assert.ok(hist.some(d => d.source === 'fakeimbot' && d.status === 'ok'))
   })
 
+  await test('bot sessions use the bot preset; conversations from older versions move to a new session once', async () => {
+    const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)
+    assert.equal(conv.preset, 'nl2sql-bot')
+    const first = conv.sessionId
+    assert.equal(sessions.agents.get(first).createReq.agentPreset, 'nl2sql-bot')
+    // Same conversation, next question: same session.
+    await bot.receive({ id: 'q1b', text: `Q:${SQL}`, userId: 'u1' })
+    assert.equal(conv.sessionId, first)
+    // A conversation saved by an older version (page preset, no `preset` field) starts over in the bot preset.
+    delete conv.preset
+    await bot.receive({ id: 'q1c', text: `Q:${SQL}`, userId: 'u1' })
+    assert.notEqual(conv.sessionId, first)
+    assert.equal(sessions.agents.get(conv.sessionId).createReq.agentPreset, 'nl2sql-bot')
+    assert.equal(conv.preset, 'nl2sql-bot')
+  })
+
   await test('bot: unknown users refused; group not @-mentioned ignored; commands answered', async () => {
     const n = bot.replies.length
     await bot.receive({ id: 'q2', text: 'hello', userId: 'u1', mentionedBot: false })
@@ -261,7 +277,11 @@ try {
     // a blockchain question → MySQL source A
     await bot.receive({ id: 'r1', text: `Q:${SQL}`, userId: 'u1' })
     assert.match(prompts.at(-1), new RegExp(`可用的数据源：\\n- A（mysql · testdb）.*主要表：.*blockchain_transactions[\\s\\S]*- ${dsName}（sqlite`), prompts.at(-1).slice(0, 600))
-    assert.match(prompts.at(-1), /nl2sql_datasource action=use/)
+    // Routing, card layout and the no-questions rule live in the bot preset, not in every message.
+    assert.doesNotMatch(prompts.at(-1), /nl2sql_datasource action=use|排版要求|不要调用 nl2sql_send/)
+    const botConv = Object.values(service.state.botConversations).filter(c => c.channelId === ch.id && c.chatId === 'g1').sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0))[0]
+    assert.equal(sessions.agents.get(botConv.sessionId).createReq.agentPreset, 'nl2sql-bot')
+    assert.equal(botConv.preset, 'nl2sql-bot')
     // a question naming the city sales file → routed to the file source
     const before = prompts.length
     await bot.receive({ id: 'r2', text: '各城市销售额 Q:select 1 as x', userId: 'u1' })

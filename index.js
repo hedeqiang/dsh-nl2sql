@@ -112,17 +112,27 @@ class Nl2SqlService {
     this.pruneBotConversations()
   }
 
+  /**
+   * Persist the state. Saves requested while a write is queued share that write, which
+   * snapshots the state when it starts — so a burst of saves (busy bots, schedulers)
+   * writes the file once instead of once per call, and every caller still resolves
+   * after a write that includes its changes.
+   */
   save() {
     if (++this.saves % 50 === 0 || this.saves === 1) this.pruneSessionMaps()
-    // `dashboard` / `dashboardFilters` mirror the current dashboard for old code paths; don't write them twice.
-    const { dashboard: _d, dashboardFilters: _f, ...persisted } = this.state
-    const snapshot = JSON.stringify(persisted, null, 2)
-    this.writing = this.writing.then(async () => {
+    if (this.pendingSave) return this.pendingSave
+    const run = this.writing.then(async () => {
+      this.pendingSave = null
+      // `dashboard` / `dashboardFilters` mirror the current dashboard for old code paths; don't write them twice.
+      const { dashboard: _d, dashboardFilters: _f, ...persisted } = this.state
+      const snapshot = JSON.stringify(persisted, null, 2)
       const tmp = `${this.file}.tmp`
       await writeFile(tmp, snapshot, { mode: 0o600 })
       await rename(tmp, this.file)
     }).catch(error => console.warn('nl2sql: save failed: %s', error.message))
-    return this.writing
+    this.pendingSave = run
+    this.writing = run
+    return run
   }
 
   /**
@@ -187,7 +197,7 @@ function registerTools(ctx, service) {
     },
     output: {
       schema: { type: 'object' },
-      render: (_args, value) => textBlock(JSON.stringify(value, null, 1)),
+      render: (_args, value) => textBlock(JSON.stringify(value)),
     },
     isConcurrencySafe: () => true,
     presentCall: (args) => ({ card: 'generic', title: args?.action === 'use' ? `选择数据源 ${args?.datasource ?? ''}` : '列出数据源', kind: 'read' }),
@@ -257,7 +267,7 @@ function registerTools(ctx, service) {
 
   const queryOutput = {
     schema: { type: 'object' },
-    render: (_args, value) => textBlock(JSON.stringify(value.model, null, 1)),
+    render: (_args, value) => textBlock(JSON.stringify(value.model)),
     presentationMeta: (_args, value) => value.display,
   }
 
@@ -279,6 +289,8 @@ function registerTools(ctx, service) {
     },
     output: queryOutput,
     timeoutMs: 660000,
+    // Read-only; the driver pools (3 connections) run parallel calls.
+    isConcurrencySafe: () => true,
     presentCall: (args) => ({ card: 'generic', title: args?.title ? `查询：${args.title}` : '执行 SQL', kind: 'read' }),
     execute: wrap(async (args, exec) => {
       const result = await service.runQuery({ sql: args.sql, datasourceId: args.datasource, sessionId: exec.agent?.id, title: args.title, chart: args.chart, source: 'agent', confirmScan: Boolean(args.confirmScan) })
@@ -328,7 +340,7 @@ function registerSendTool(ctx, service) {
       },
       additionalProperties: false,
     },
-    output: { schema: { type: 'object' }, render: (_args, value) => textBlock(JSON.stringify(value, null, 1)) },
+    output: { schema: { type: 'object' }, render: (_args, value) => textBlock(JSON.stringify(value)) },
     presentCall: (args) => ({ card: 'generic', title: args?.action === 'list' ? '列出推送渠道' : `推送到 ${args?.channel ?? '默认渠道'}：${args?.title ?? ''}`, kind: 'other' }),
     execute: async (args, exec) => {
       try {
@@ -357,7 +369,7 @@ function registerOverviewTool(ctx, service) {
     },
     output: {
       schema: { type: 'object' },
-      render: (_args, value) => textBlock(JSON.stringify(value.model, null, 1)),
+      render: (_args, value) => textBlock(JSON.stringify(value.model)),
       presentationMeta: (_args, value) => value.display,
     },
     timeoutMs: 660000,
@@ -395,7 +407,7 @@ function registerKnowledgeTool(ctx, service) {
       required: ['action', 'question'],
       additionalProperties: false,
     },
-    output: { schema: { type: 'object' }, render: (_args, value) => textBlock(JSON.stringify(value, null, 1)) },
+    output: { schema: { type: 'object' }, render: (_args, value) => textBlock(JSON.stringify(value)) },
     isConcurrencySafe: (args) => args?.action === 'search',
     presentCall: (args) => ({ card: 'generic', title: args?.action === 'save_example' ? '保存样例问答' : '检索业务知识', kind: args?.action === 'save_example' ? 'edit' : 'search' }),
     execute: async (args, exec) => {
@@ -614,7 +626,7 @@ export async function apply(ctx, config) {
 function registerAnalysisTools(ctx, service) {
   const out = {
     schema: { type: 'object' },
-    render: (_args, value) => textBlock(JSON.stringify(value.model ?? value, null, 1)),
+    render: (_args, value) => textBlock(JSON.stringify(value.model ?? value)),
     presentationMeta: (_args, value) => (value.display ? JSON.parse(JSON.stringify(value.display)) : value.why ? JSON.parse(JSON.stringify({ why: value.why })) : null),
   }
   const fail = (fn) => async (args, exec) => {
@@ -641,6 +653,8 @@ function registerAnalysisTools(ctx, service) {
     },
     output: out,
     timeoutMs: 660000,
+    // Read-only; the driver pools (3 connections) run parallel calls.
+    isConcurrencySafe: () => true,
     presentCall: (args) => ({ card: 'generic', title: `指标：${args?.metric ?? ''}`, kind: 'read' }),
     execute: fail(async (args, exec) => {
       const r = await service.queryMetric({ ...args, datasourceId: args.datasource, sessionId: exec.agent?.id, source: 'agent' })
@@ -666,6 +680,8 @@ function registerAnalysisTools(ctx, service) {
     },
     output: out,
     timeoutMs: 660000,
+    // Read-only; the driver pools (3 connections) run parallel calls.
+    isConcurrencySafe: () => true,
     presentCall: (args) => ({ card: 'generic', title: args?.mode === 'why' ? '变化归因' : args?.mode === 'detail' ? `明细 ${args?.xValue ?? ''}` : `按 ${args?.dimension ?? ''} 拆分`, kind: 'read' }),
     execute: fail(async (args, exec) => {
       if (args.mode === 'why') {
