@@ -319,6 +319,12 @@ export const methods = {
     const c = this.requireChannel(channelId)
     const resolved = []
     const sender = this.actorFor(sessionId)
+    // IM bot conversations answer in their own chat only: the agent must not push data to other
+    // channels (another group could see data the asker's group is not meant to share).
+    if (source === 'agent' && sender && sender.kind !== 'owner' && sender.platform) {
+      this.auditAdmin('bot.push.denied', `${sender.name} → ${c.name}`, sender)
+      throw new UserError('nl2sql/forbidden', 'IM 机器人对话中不能推送到其他渠道：回答会直接回复在当前聊天里。需要推送请在 Harness 页面或对话中操作。')
+    }
     for (const id of resultIds.slice(0, 10)) {
       const r = this.lookupResult(id)
       if (!r) throw new UserError('nl2sql/result-expired', `结果 ${id} 已过期，请重新查询后再发送。`)

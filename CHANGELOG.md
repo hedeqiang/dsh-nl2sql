@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.9] - 2026-11-13
+
+### Security
+- IM bot conversations can no longer push data to other channels: `nl2sql_send` is refused in bot sessions (listing channels still works) and the attempt is recorded in the admin log. Answers are replied in the chat they were asked in; pushing stays available from the Harness page and page conversations.
+
 ## [0.14.8] - 2026-11-13
 
 ### Fixed
@@ -184,7 +189,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.8...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.9...HEAD
+[0.14.9]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.8...v0.14.9
 [0.14.8]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.7...v0.14.8
 [0.14.7]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.6...v0.14.7
 [0.14.6]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.5...v0.14.6

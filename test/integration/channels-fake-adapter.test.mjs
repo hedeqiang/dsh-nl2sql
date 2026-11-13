@@ -309,6 +309,17 @@ try {
     assert.equal(sessions.agents.get(conv.sessionId).createReq.workspaceId, ws.id, 'session created in that workspace')
   })
 
+  await test('bot conversations cannot push to other channels (nl2sql_send refused, audited)', async () => {
+    const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)
+    const before = (fake.sent ?? []).length
+    await assert.rejects(app.tool('nl2sql_send', { channel: ch.id, text: 'leak', resultIds: [firstResultIds[0]] }, { agent: { id: conv.sessionId } }), /不能推送到其他渠道/)
+    assert.equal((fake.sent ?? []).length, before, 'nothing sent')
+    assert.ok(service.records.list('admin', { limit: 20 }).some(x => x.action === 'bot.push.denied'))
+    // listing channels is harmless and still allowed; page sessions can still push
+    const list = await app.tool('nl2sql_send', { action: 'list' }, { agent: { id: conv.sessionId } })
+    assert.ok(Array.isArray(list.channels))
+  })
+
   await test('actions: re-authorized per click (rate limit, viewer, wrong chat, wrong channel); breakdown replies', async () => {
     // Replies carry no buttons now; tokens from cards sent by older versions are still honoured.
     const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)
