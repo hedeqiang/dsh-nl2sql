@@ -17,6 +17,8 @@
  * re-checks data source scope, row-level rules and role before anything runs.
  */
 import { randomBytes } from 'node:crypto'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { parseSelect } from '../analysis.js'
 import { getAdapter, kindOf, loadAdapters } from '../channels/index.js'
 import { toInboundAction, toInboundMessage } from '../channels/lark.js'
@@ -412,7 +414,11 @@ export const methods = {
       const prompt = `[${name}${where} · ${actor.name}${actor.role === 'viewer' ? ' · 只读成员' : ''}] ${text}\n\n（${dsLine}\n回答会以${name}消息发回该聊天：请用简洁的中文 Markdown 写结论，必要时附上查询结果（排查中间步骤、查错表或查不到数据的探索性查询请在 nl2sql_query 中设 show=false，回复卡片只展示支撑结论的结果）；不要调用 nl2sql_send，也不要向用户提问——有歧义时说明你的假设后直接回答。${actor.role === 'viewer' ? '该成员是只读角色：只能用 nl2sql_metric 查询指标库，或复用 nl2sql_knowledge 中已验证的样例 SQL；不能自由编写 SQL。' : ''}）`
       const requestId = platform === 'lark' ? `lark-${m.messageId}` : `${platform}-${m.chatId}-${m.messageId}`
       if (conv.sessionId && this.state.sessions[conv.sessionId] !== ds.id) { this.state.sessions[conv.sessionId] = ds.id; await this.save() }
-      const turn = await this.runAgentTurn({ sessionId: conv.sessionId, title: `${name} · ${conv.chatName ?? actor.name}`, requestId, text: prompt, prepare, timeoutMs: 600000 })
+      const group = { key: `bot-${m.channelId ?? platform}`, title: channel ? `${name} · ${channel.name}` : `${name}机器人` }
+      // Conversations started before sessions were grouped by channel move to a new session in the group once.
+      if (conv.sessionId && conv.group !== group.key && !this.state.settings.botCwd) conv.sessionId = null
+      conv.group = group.key
+      const turn = await this.runAgentTurn({ sessionId: conv.sessionId, title: `${name} · ${conv.chatName ?? actor.name}`, requestId, text: prompt, prepare, timeoutMs: 600000, group })
       const usedDs = this.findDatasource(this.state.sessions[conv.sessionId]) ?? ds
       if (usedDs.id !== conv.datasourceId) { conv.datasourceId = usedDs.id; convs[key] = conv }
       let body = turn.text
@@ -501,11 +507,34 @@ export const methods = {
    * timeouts and pending questions by cancelling the turn.
    * @returns {{ sessionId, text, resultIds, reason: 'idle'|'timeout'|'input-required' }}
    */
-  async runAgentTurn({ sessionId, title, requestId, text, prepare, timeoutMs = 300000 }) {
+  /**
+   * The Harness workspace (sidebar group) bot conversations of one channel live in:
+   * a directory under the plugin's data dir per group, registered with the channel's
+   * name as title (kept in sync on rename). Returns { workspaceId } or {} when the
+   * workspace registry is unavailable or registration fails (sessions then stay ungrouped).
+   */
+  async sessionGroup(group) {
+    const registry = this.ctx.get('workspaceRegistry')
+    if (!group?.key || !registry?.create) return {}
+    try {
+      const dir = join(this.dir, 'workspaces', String(group.key).replace(/[^\w.-]+/g, '_').slice(0, 80))
+      await mkdir(dir, { recursive: true })
+      const ws = await registry.create(dir, group.title)
+      if (group.title && ws.title !== group.title) { try { await ws.setTitle(group.title) } catch {} }
+      return { workspaceId: ws.id }
+    } catch (error) {
+      console.warn('nl2sql bot: cannot register workspace group %s: %s', group.key, error.message)
+      return {}
+    }
+  },
+
+  async runAgentTurn({ sessionId, title, requestId, text, prepare, timeoutMs = 300000, group }) {
     const controller = this.ctx.get('sessionController')
     const registry = this.ctx.get('workspaceRegistry')
     const create = async () => {
-      const created = await controller.create({ agentPreset: PRESET_ID, ...(this.state.settings.botCwd ? { cwd: this.state.settings.botCwd } : {}) })
+      // An explicit bot working directory (settings.botCwd) wins; otherwise sessions go to the group's workspace.
+      const where = this.state.settings.botCwd ? { cwd: this.state.settings.botCwd } : await this.sessionGroup(group)
+      const created = await controller.create({ agentPreset: PRESET_ID, ...where })
       try { await controller.rename?.({ sessionId: created.sessionId, title }) } catch {}
       return created.sessionId
     }

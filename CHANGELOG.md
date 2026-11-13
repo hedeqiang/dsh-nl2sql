@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.7] - 2026-11-13
+
+### Changed
+- **Bot conversations are grouped by channel in the Harness sidebar:** each IM channel gets its own workspace group (e.g. "飞书 · AlchemyPay-Bot") instead of "Ungrouped". Existing chats continue in a new session inside the group on their next message (older sessions stay where they are). An explicit bot working directory (`settings.botCwd`) still takes precedence.
+
 ## [0.14.6] - 2026-11-13
 
 ### Changed
@@ -174,7 +179,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.6...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.7...HEAD
+[0.14.7]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.6...v0.14.7
 [0.14.6]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.5...v0.14.6
 [0.14.5]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.4...v0.14.5
 [0.14.4]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.3...v0.14.4

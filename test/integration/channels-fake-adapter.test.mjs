@@ -81,7 +81,7 @@ function fakeSessions(answer) {
   let n = 0
   const agents = { get: (id) => sessions.get(id) }
   const controller = {
-    async create() { const id = `sess-${++n}`; const events = []; sessions.set(id, { id, turn: 0, session: { snapshotEvents: () => events } }); return { sessionId: id } },
+    async create(req = {}) { const id = `sess-${++n}`; const events = []; sessions.set(id, { id, turn: 0, createReq: req, session: { snapshotEvents: () => events } }); return { sessionId: id } },
     async rename() {},
     async prompt(req) { const s = sessions.get(req.sessionId); s.queue = [...(s.queue ?? []), req] },
     async wait({ sessionId }) {
@@ -112,7 +112,16 @@ const sessions = fakeSessions(async (text, sid) => {
 })
 
 const schedule = fakeSchedule()
-const app = await boot({ label: 'ch-fake', services: { agents: sessions.agents, sessionController: sessions.controller, schedule } })
+// Fake workspace registry: records the groups (directory + title) bot sessions are created in.
+const workspaces = []
+const workspaceRegistry = {
+  async create(path, title) {
+    let ws = workspaces.find(w => w.path === path)
+    if (!ws) { ws = { id: `ws-${workspaces.length + 1}`, path, title, async setTitle(t) { this.title = t } }; workspaces.push(ws) }
+    return ws
+  },
+}
+const app = await boot({ label: 'ch-fake', services: { agents: sessions.agents, sessionController: sessions.controller, schedule, workspaceRegistry } })
 toolsRef = app.tools
 const { call, service } = app
 const SQL = 'select date(created_at) d, count(*) n from blockchain_transactions group by d order by d'
@@ -289,6 +298,15 @@ try {
       assert.match(bot.replies.at(-1).text ?? '', re, `${cmd} → ${bot.replies.at(-1).text}`)
     }
     await bot.receive({ id: 'cmd-auto2', text: '自动', userId: 'u1' })
+  })
+
+  await test('bot sessions are created in a Harness workspace group named after the channel', async () => {
+    const conv = Object.values(service.state.botConversations).find(c => c.channelId === ch.id)
+    assert.equal(conv.group, `bot-${ch.id}`)
+    const ws = workspaces.find(w => w.path.endsWith(`bot-${ch.id}`))
+    assert.ok(ws, JSON.stringify(workspaces))
+    assert.match(ws.title, new RegExp(` · ${ch.name}$`), ws.title)
+    assert.equal(sessions.agents.get(conv.sessionId).createReq.workspaceId, ws.id, 'session created in that workspace')
   })
 
   await test('actions: re-authorized per click (rate limit, viewer, wrong chat, wrong channel); breakdown replies', async () => {
