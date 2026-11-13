@@ -525,6 +525,9 @@
 .n2s-mcp-steps{margin:6px 0 0;padding-left:18px;font-size:12.5px}
 .n2s-mcp-log .n2s-select{max-width:200px}
 .n2s-mcp-logtable td{vertical-align:middle}
+.n2s-fq-settings{padding-top:6px}
+.n2s-fq-setgroup{margin:14px 0 2px;font-size:12.5px;font-weight:600;color:var(--n2s-muted);letter-spacing:.02em}
+.n2s-fq-setgroup:first-child{margin-top:4px}
 /* ---- dashboard v2 ---- */
 .n2s-srcbadge{display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
 .n2s-seg.small button{height:26px;padding:0 10px;font-size:12px}

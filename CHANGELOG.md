@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-11-13
+
+### Changed
+- **Data health settings** are laid out like the Settings page: two groups (Data freshness, Data quality patrol) with switches and one explanation per row; a group's fields are hidden while it is off. With freshness off, its table and events are no longer shown on the Data health page either — just a note and the switch.
+
 ## [0.14.4] - 2026-11-13
 
 ### Added
@@ -164,7 +169,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.4...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.5...HEAD
+[0.14.5]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.4...v0.14.5
 [0.14.4]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.3...v0.14.4
 [0.14.3]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.1...v0.14.2

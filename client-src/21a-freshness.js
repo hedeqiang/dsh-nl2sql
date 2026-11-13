@@ -181,19 +181,24 @@
           onSaved?.()
         } catch (e) { notifyError(e) }
       })
-      return h('div', { className: 'n2s-card' },
-        h('div', { className: 'n2s-form' },
-          h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: Boolean(form.freshness.enabled), onChange: e => setF('enabled', e.target.checked) }), t('fq.set.fEnabled')),
-          h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: form.freshness.showInUi !== false && Boolean(form.freshness.enabled), disabled: !form.freshness.enabled, onChange: e => setF('showInUi', e.target.checked) }), t('fq.set.showInUi')),
-          h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: Boolean(form.quality.enabled), onChange: e => setQ('enabled', e.target.checked) }), t('fq.set.qEnabled')),
-          h('label', { className: 'n2s-field' }, h('span', null, t('fq.set.interval')), h('input', { className: 'n2s-input', type: 'number', min: 5, max: 1440, value: form.freshness.intervalMin, onChange: e => setF('intervalMin', e.target.value) })),
-          h('label', { className: 'n2s-field' }, h('span', null, t('fq.set.time')), h('input', { className: 'n2s-input', type: 'time', value: form.quality.time, onChange: e => setQ('time', e.target.value) })),
-          h('label', { className: 'n2s-field' }, h('span', null, t('fq.set.staleHours')), h('input', { className: 'n2s-input', type: 'number', min: 0.25, step: 0.25, value: form.freshness.staleHours, onChange: e => setF('staleHours', e.target.value) })),
-          h('label', { className: 'n2s-field' }, h('span', null, t('fq.set.drop')), h('input', { className: 'n2s-input', type: 'number', min: 1, max: 100, value: form.quality.dropPoints, onChange: e => setQ('dropPoints', e.target.value) })),
-          h('div', { className: 'n2s-field' }, h('label', { htmlFor: 'n2s-fq-fch', className: 'n2s-flabel' }, t('fq.set.fChannel')), h(ChannelPicker, { t, id: 'n2s-fq-fch', value: form.freshness.channelId ?? '', noneLabel: t('fq.set.noPush'), onChange: v => setF('channelId', v) })),
-          h('div', { className: 'n2s-field' }, h('label', { htmlFor: 'n2s-fq-qch', className: 'n2s-flabel' }, t('fq.set.qChannel')), h(ChannelPicker, { t, id: 'n2s-fq-qch', value: form.quality.channelId ?? '', noneLabel: t('fq.set.noPush'), onChange: v => setQ('channelId', v) }))),
-        h('div', { className: 'n2s-faint n2s-small', style: { marginTop: 10 } }, t('fq.set.hint')),
-        h('div', { className: 'n2s-row', style: { marginTop: 12, justifyContent: 'flex-end' } },
+      const fOn = Boolean(form.freshness.enabled)
+      const qOn = Boolean(form.quality.enabled)
+      const sw = (checked, onChange, label, disabled) => h('label', { className: 'n2s-switch' }, h('input', { type: 'checkbox', role: 'switch', checked, disabled, 'aria-label': label, onChange: e => onChange(e.target.checked) }), h('span', null, label))
+      const num = (id, value, onChange, attrs) => h('input', { id, className: 'n2s-input', type: 'number', style: { maxWidth: 160 }, value, onChange: e => onChange(e.target.value), ...attrs })
+      const picker = (id, value, onChange) => h('div', { style: { maxWidth: 360 } }, h(ChannelPicker, { t, id, value: value ?? '', noneLabel: t('fq.set.noPush'), onChange }))
+      return h('div', { className: 'n2s-card n2s-fq-settings' },
+        h('div', { className: 'n2s-fq-setgroup' }, t('fq.set.gFresh')),
+        h(SettingRow, { label: t('fq.set.fEnabledShort'), hint: t('fq.set.fEnabledHint') }, sw(fOn, v => setF('enabled', v), fOn ? t('fq.set.on') : t('fq.set.off'))),
+        fOn && h(SettingRow, { label: t('fq.set.showShort'), hint: t('fq.set.showHint') }, sw(form.freshness.showInUi !== false, v => setF('showInUi', v), form.freshness.showInUi !== false ? t('fq.set.shown') : t('fq.set.hidden'))),
+        fOn && h(SettingRow, { label: t('fq.set.interval'), htmlFor: 'n2s-fq-int' }, num('n2s-fq-int', form.freshness.intervalMin, v => setF('intervalMin', v), { min: 5, max: 1440 })),
+        fOn && h(SettingRow, { label: t('fq.set.staleHours'), htmlFor: 'n2s-fq-stale', hint: t('fq.set.staleHint') }, num('n2s-fq-stale', form.freshness.staleHours, v => setF('staleHours', v), { min: 0.25, step: 0.25 })),
+        fOn && h(SettingRow, { label: t('fq.set.fChannel'), htmlFor: 'n2s-fq-fch', hint: t('fq.set.fChannelHint') }, picker('n2s-fq-fch', form.freshness.channelId, v => setF('channelId', v))),
+        h('div', { className: 'n2s-fq-setgroup' }, t('fq.set.gQuality')),
+        h(SettingRow, { label: t('fq.set.qEnabled'), hint: t('fq.set.qEnabledHint') }, sw(qOn, v => setQ('enabled', v), qOn ? t('fq.set.on') : t('fq.set.off'))),
+        qOn && h(SettingRow, { label: t('fq.set.time'), htmlFor: 'n2s-fq-time' }, h('input', { id: 'n2s-fq-time', className: 'n2s-input', type: 'time', style: { maxWidth: 160 }, value: form.quality.time, onChange: e => setQ('time', e.target.value) })),
+        qOn && h(SettingRow, { label: t('fq.set.qChannel'), htmlFor: 'n2s-fq-qch' }, picker('n2s-fq-qch', form.quality.channelId, v => setQ('channelId', v))),
+        qOn && form.quality.channelId && h(SettingRow, { label: t('fq.set.drop'), htmlFor: 'n2s-fq-drop' }, num('n2s-fq-drop', form.quality.dropPoints, v => setQ('dropPoints', v), { min: 1, max: 100 })),
+        h('div', { className: 'n2s-row', style: { marginTop: 14, justifyContent: 'flex-end' } },
           h('button', { type: 'button', className: 'n2s-btn primary', disabled: busy, onClick: save }, busy ? h('span', { className: 'n2s-spin' }) : null, t('ds.save'))))
     }
 
@@ -290,7 +295,10 @@
           ' · ',
           status.value.quality.enabled ? fmt(t, 'fq.admin.nextQ', { time: status.value.quality.time }) : t('fq.admin.qOff')),
         !dsId ? h('div', { className: 'n2s-empty' }, h('h3', null, t('fq.admin.noDs'))) : h(React.Fragment, null,
-          h(HealthFreshnessTable, { key: `f-${dsId}`, t, dsId }),
+          // When freshness is turned off, its table and events are not shown (and not queried).
+          status.value && !status.value.freshness.enabled
+            ? h('div', { className: 'n2s-notice', style: { marginBottom: 6 } }, t('fq.admin.fOffNote'))
+            : h(HealthFreshnessTable, { key: `f-${dsId}`, t, dsId }),
           h(HealthQuality, { key: `q-${dsId}`, t, dsId })),
         h('div', { className: 'n2s-setsub' }, t('fq.set.title')),
         h(HealthSettings, { t, onSaved: () => status.reload() }))

@@ -174,8 +174,14 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await clickEl(btn('立即巡检'), 80)
     assert.ok(rpcCalls.some(c => c.method === 'qualityScan' && c.payload.datasourceId === 'd1'))
     // settings: toggle daily patrol and save
-    const q = [...rootEl.querySelectorAll('label.n2s-check')].find(l => l.textContent.includes('每日数据质量巡检')).querySelector('input')
-    await clickEl(q)
+    const settingsEl = rootEl.querySelector('.n2s-fq-settings')
+    assert.ok(settingsEl, 'settings card')
+    assert.match(settingsEl.textContent, /数据新鲜度[\s\S]*数据质量巡检/, 'two groups, freshness first')
+    assert.ok(!settingsEl.textContent.includes('质量巡检时间'), 'quality fields hidden while patrol is off')
+    const switches = [...settingsEl.querySelectorAll('input[role=switch]')]
+    assert.equal(switches.length, 3, 'freshness on, show on page, quality')
+    await clickEl(switches[2])
+    assert.ok(settingsEl.textContent.includes('质量巡检时间'), 'quality fields appear when switched on')
     rpcCalls.length = 0
     await clickEl(btn('保存'), 60)
     const saved = rpcCalls.find(c => c.method === 'saveHealthSettings')
@@ -183,6 +189,10 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.equal(saved.payload.quality.enabled, true)
     assert.equal(saved.payload.freshness.intervalMin, 30)
     assert.equal(saved.payload.freshness.overrides, undefined, 'overrides are edited in the table, not overwritten by the form')
+    // switching freshness off hides its fields and, once saved, the freshness table
+    await clickEl(rootEl.querySelector('.n2s-fq-settings input[role=switch]'))
+    assert.ok(!rootEl.querySelector('.n2s-fq-settings').textContent.includes('新鲜度检查间隔'), 'freshness fields hidden while off')
+    assert.ok(!rootEl.querySelector('.n2s-fq-settings').textContent.includes('在页面上显示'))
   })
 
   await test('no React errors', () => {
