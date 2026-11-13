@@ -448,7 +448,7 @@ function registerRpc(ctx, service) {
     deleteDatasource: (p) => service.deleteDatasource(p.id),
     setCurrent: (p) => service.setCurrent(p.id),
     testConnection: (p) => service.testConnection(p),
-    analyzeSchema: (p) => service.annotatedSchema(p.id, { refresh: Boolean(p.refresh) }),
+    analyzeSchema: (p) => service.annotatedSchema(p.id, { refresh: Boolean(p.refresh), ...(Array.isArray(p.tables) ? { tables: p.tables.slice(0, 200) } : {}) }),
     getSettings: () => service.getSettings(),
     saveSettings: (p) => service.saveSettings(p),
     runQuery: (p) => service.runQuery({ sql: p.sql, datasourceId: p.datasourceId, title: p.title, chart: p.chart, source: 'ui', confirmScan: Boolean(p.confirmScan), useCache: Boolean(p.useCache) }),

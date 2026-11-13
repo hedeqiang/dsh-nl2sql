@@ -1,6 +1,13 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'schema.pickAll': "全选",
+      'schema.pickTables': "选择表重新分析",
+      'schema.pickedN': "已选 {n} 张表",
+      'schema.pickNone': "清空",
+      'schema.reanalyzePicked': "重新分析所选表",
+      'schema.reanalyzeThis': "重新分析这张表",
+      'schema.reanalyzedN': "已重新分析 {n} 张表，其他表保持不变",
       'cp.title': "群内提问权限",
       'cp.defaultTitle': "新群的默认提问权限",
       'cp.defaultHint': "新登记的群默认使用这里的设置；每个群也可以在「成员与权限」里单独设置。已有的群不受影响。",
@@ -1207,6 +1214,13 @@
       'policy.tablesLabel': '可访问的表',
     }
     const en = {
+      'schema.pickAll': "All",
+      'schema.pickTables': "Re-analyze selected tables",
+      'schema.pickedN': "{n} selected",
+      'schema.pickNone': "Clear",
+      'schema.reanalyzePicked': "Re-analyze selected",
+      'schema.reanalyzeThis': "Re-analyze this table",
+      'schema.reanalyzedN': "Re-analyzed {n} table(s); the others are unchanged",
       'cp.title': "Who can ask in this group",
       'cp.defaultTitle': "Default question permissions for new groups",
       'cp.defaultHint': "Newly registered groups use these settings; each group can override them in Members & access. Existing groups are not affected.",

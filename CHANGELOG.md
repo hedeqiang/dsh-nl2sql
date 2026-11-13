@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-11-13
+
+### Added
+- **Re-analyze selected tables:** on the Schema page, "Re-analyze selected tables" turns the table list into checkboxes, and each table's menu has "Re-analyze this table". Only those tables' columns, indexes, row estimates and value samples are refreshed; every other table keeps its previous analysis, and relations are recomputed over the merged schema. Requires one full analysis first (`analyzeSchema { tables }`).
+
 ## [0.15.1] - 2026-11-13
 
 ### Changed
@@ -199,7 +204,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.2...HEAD
+[0.15.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.9...v0.15.0
 [0.14.9]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.8...v0.14.9

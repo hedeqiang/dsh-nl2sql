@@ -1,6 +1,6 @@
 {
   "name": "@hedeqiang/dsh-nl2sql",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Ask MySQL, PostgreSQL, Elasticsearch and CSV/Excel in plain language inside DeepSeek Harness: charts, dashboards, alerts, and IM push and bots for Lark/Feishu, Telegram, WeCom and DingTalk.",
   "type": "module",
   "bin": {

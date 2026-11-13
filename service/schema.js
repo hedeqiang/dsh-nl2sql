@@ -38,9 +38,18 @@ export function reclassifySensitive(schema) {
 export const methods = {
   // --------------------------------------------------------------- schema
 
-  async analyzeSchema(id, { refresh = false } = {}) {
+  /**
+   * Analyze the schema. `tables` (names) re-analyzes only those tables: their columns, indexes,
+   * row estimates and value samples are refreshed; every other table keeps its previous
+   * analysis (and samples). Tables that no longer exist are dropped; new tables can be named.
+   * Relations and table roles are recomputed over the merged schema. Needs a previous analysis.
+   */
+  async analyzeSchema(id, { refresh = false, tables: only } = {}) {
     const ds = this.requireDatasource(id)
-    if (!refresh) {
+    const partial = Array.isArray(only) && only.length > 0
+    const previousForPartial = partial ? (this.schemas.get(ds.id) ?? await this.readSchemaFile(ds.id)) : null
+    if (partial && !previousForPartial) throw new UserError('nl2sql/invalid', '还没有分析过表结构，请先完整分析一次。')
+    if (!refresh && !partial) {
       const cached = this.schemas.get(ds.id) ?? await this.readSchemaFile(ds.id)
       if (cached) {
         this.schemas.set(ds.id, cached)
@@ -49,6 +58,12 @@ export const methods = {
     }
     const settings = this.settingsFor(ds)
     const raw = await this.withDriver(ds, d => d.introspect(Math.max(settings.timeoutMs, 30000)))
+    const pick = partial ? new Set(only.map(String)) : null
+    if (partial) {
+      const known = new Set(raw.tables.map(t => t.name))
+      const missing = [...pick].filter(n => !known.has(n) && !previousForPartial.tables.some(t => t.name === n))
+      if (missing.length) throw new UserError('nl2sql/invalid', `找不到这些表：${missing.join('、')}`)
+    }
     const tables = raw.tables.map(t => ({ ...t, columns: [], indexes: [] }))
     const byName = new Map(tables.map(t => [t.name, t]))
     for (const c of raw.columns) {
@@ -65,6 +80,15 @@ export const methods = {
       indexMap.get(k).columns.push(i.column)
     }
     for (const idx of indexMap.values()) byName.get(idx.table)?.indexes.push({ name: idx.name, unique: idx.unique, columns: idx.columns })
+    if (partial) {
+      // Keep the previous analysis of every table not picked (still existing ones only).
+      const prevByName = new Map(previousForPartial.tables.map(t => [t.name, t]))
+      for (let i = 0; i < tables.length; i++) {
+        if (pick.has(tables[i].name)) continue
+        const prev = prevByName.get(tables[i].name)
+        if (prev) { tables[i] = structuredClone(prev); byName.set(prev.name, tables[i]) }
+      }
+    }
     const fkRows = raw.foreignKeys
     const versionRows = [{ version: raw.version }]
     const declared = fkRows.map(r => ({ ...r, kind: 'declared', confidence: 1 }))
@@ -75,6 +99,7 @@ export const methods = {
     if (settings.sampleMode !== 'off') {
       const jobs = []
       for (const t of tables) {
+        if (partial && !pick.has(t.name)) continue
         if (t.type === 'VIEW' || (t.rows ?? 0) > 2_000_000) continue
         for (const c of t.columns) {
           const cheapText = ds.type === 'sqlite' && c.roles.includes('text') && (t.rows ?? 0) <= 200000
@@ -92,6 +117,7 @@ export const methods = {
       }
     }
     const schema = {
+      ...(partial ? { partialAt: Date.now(), partialTables: [...pick].slice(0, 50), fullAnalyzedAt: previousForPartial.fullAnalyzedAt ?? previousForPartial.analyzedAt } : { fullAnalyzedAt: Date.now() }),
       datasourceId: ds.id,
       dialect: ds.type ?? 'mysql',
       database: ds.database,

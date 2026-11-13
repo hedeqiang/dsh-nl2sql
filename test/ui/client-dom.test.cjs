@@ -184,6 +184,25 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.match(text(), /boom/); assert.match(text(), /指标卡/)
   })
 
+  await test('表结构: re-analyze selected tables only → analyzeSchema { refresh, tables }', async () => {
+    await openTab('表结构')
+    await click('选择表重新分析')
+    const boxes = [...document.querySelectorAll('.n2s-pickitem input')]
+    assert.ok(boxes.length >= 1, 'checkbox list')
+    const reBtn = [...document.querySelectorAll('.n2s-pickbar button')].find((b) => b.textContent.includes('重新分析所选表'))
+    for (const b of boxes) if (b.checked) await clickEl(b)
+    assert.equal(reBtn.disabled, true, 'disabled with nothing picked')
+    await clickEl(boxes[0])
+    rpcCalls.length = 0
+    await clickEl([...document.querySelectorAll('.n2s-pickbar button')].find((b) => b.textContent.includes('重新分析所选表')), 60)
+    const call0 = rpcCalls.find((c) => c.method === 'analyzeSchema')
+    assert.ok(call0, rpcCalls.map((c) => c.method).join(','))
+    assert.equal(call0.payload.refresh, true)
+    assert.deepEqual(call0.payload.tables, [boxes[0].closest('label').textContent])
+    assert.ok(!document.querySelector('.n2s-pickbar'), 'picking mode closes after success')
+    assert.deepEqual(missingKeys(), [])
+  })
+
   await test('业务知识: feedback list, fix form, drafts, editor', async () => {
     await openTab('业务知识')
     await click('反馈'); assert.match(text(), /口径不对/); assert.match(text(), /75%/)

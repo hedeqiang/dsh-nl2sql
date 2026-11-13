@@ -6,17 +6,22 @@
       const [selected, setSelected] = useState(null)
       const [preview, setPreview] = useState(null)
       const [mode, setMode] = useState('list')
+      // Picking tables to re-analyze: null = off, otherwise a Set of table names.
+      const [picking, setPicking] = useState(null)
       const currentDs = useRef(ds?.id)
       currentDs.current = ds?.id
-      const analyze = useCallback(async (refresh) => {
+      const analyze = useCallback(async (refresh, onlyTables) => {
         if (!ds) return
         const forId = ds.id
         setBusy(true); setError(null)
-        try { const sc = await call('analyzeSchema', { id: forId, refresh }); if (currentDs.current === forId) setSchema(sc) } catch (e) { if (currentDs.current === forId) setError(e.message) }
+        try {
+          const sc = await call('analyzeSchema', { id: forId, refresh, ...(onlyTables?.length ? { tables: onlyTables } : {}) })
+          if (currentDs.current === forId) { setSchema(sc); if (onlyTables?.length) { setPicking(null); notify(fmt(t, 'schema.reanalyzedN', { n: onlyTables.length }), 'ok') } }
+        } catch (e) { if (currentDs.current === forId) setError(e.message) }
         if (currentDs.current === forId) setBusy(false)
         refreshDatasources()
       }, [ds?.id])
-      useEffect(() => { setSchema(null); setSelected(null); setPreview(null); if (ds?.schemaAnalyzedAt) analyze(false) }, [ds?.id])
+      useEffect(() => { setSchema(null); setSelected(null); setPreview(null); setPicking(null); if (ds?.schemaAnalyzedAt) analyze(false) }, [ds?.id])
       if (!ds) return null
       const tables = (schema?.tables ?? []).filter(tb => !filter || tb.name.toLowerCase().includes(filter.toLowerCase()) || tb.comment.toLowerCase().includes(filter.toLowerCase()) || tb.columns.some(c => c.name.toLowerCase().includes(filter.toLowerCase())))
       const table = schema?.tables.find(tb => tb.name === selected)
@@ -49,6 +54,7 @@
           schema && h('div', { className: 'n2s-seg', role: 'group', 'aria-label': t('schema.mode') },
             h('button', { type: 'button', 'aria-pressed': mode === 'list', onClick: () => setMode('list') }, t('schema.modeList')),
             h('button', { type: 'button', 'aria-pressed': mode === 'er', onClick: () => setMode('er') }, t('schema.modeEr'))),
+          schema && mode === 'list' && h('button', { type: 'button', className: 'n2s-btn small ghost', 'aria-pressed': Boolean(picking), disabled: busy, onClick: () => setPicking(p => (p ? null : new Set(current ? [current] : []))) }, picking ? t('ds.cancel') : t('schema.pickTables')),
           h('button', { type: 'button', className: 'n2s-btn small', disabled: busy, onClick: () => analyze(true) }, busy ? h('span', { className: 'n2s-spin' }) : Icon.refresh(13), busy ? t('schema.analyzing') : schema ? t('schema.refresh') : t('schema.analyze'))),
         h(SchemaChanges, { t, ds }),
         schema && mode === 'er' && h(ErGraph, { t, schema, onPick: (name) => { setSelected(name); setMode('list'); setPreview(null) } }),
@@ -58,6 +64,16 @@
         schema && mode === 'list' && h('div', { className: 'n2s-split' },
           h('div', { className: 'n2s-sidepanel' },
             h('div', { className: 'n2s-search', style: { maxWidth: 'none', marginBottom: 6 } }, h('span', { className: 'n2s-ico' }, Icon.search()), h('input', { className: 'n2s-input', 'aria-label': t('schema.search'), placeholder: t('schema.search'), value: filter, onChange: e => setFilter(e.target.value) })),
+            picking && h('div', { className: 'n2s-pickbar' },
+              h('div', { className: 'n2s-pickbar-row' },
+                h('span', { className: 'n2s-small' }, fmt(t, 'schema.pickedN', { n: picking.size })),
+                h('span', { className: 'n2s-grow' }),
+                h('button', { type: 'button', className: 'n2s-link n2s-small', onClick: () => setPicking(new Set([...picking, ...tables.map(x => x.name)])) }, t('schema.pickAll')),
+                h('button', { type: 'button', className: 'n2s-link n2s-small', onClick: () => setPicking(new Set()) }, t('schema.pickNone'))),
+              h('button', { type: 'button', className: 'n2s-btn small primary', style: { width: '100%', justifyContent: 'center' }, disabled: busy || picking.size === 0, onClick: () => analyze(true, [...picking]) }, busy ? h('span', { className: 'n2s-spin' }) : Icon.refresh(13), t('schema.reanalyzePicked'))),
+            picking ? h('div', { className: 'n2s-list', role: 'group', 'aria-label': t('schema.pickTables') }, tables.map(tb => h('label', { key: tb.name, className: 'n2s-item n2s-pickitem' },
+              h('input', { type: 'checkbox', checked: picking.has(tb.name), onChange: e => setPicking(prev => { const n = new Set(prev); if (e.target.checked) n.add(tb.name); else n.delete(tb.name); return n }) }),
+              h('span', { className: 'name' }, tb.name)))) :
             h('div', { className: 'n2s-list', role: 'listbox', 'aria-label': t('schema.tablesLabel') }, tables.map(tb => h('button', {
               key: tb.name, type: 'button', className: 'n2s-item', role: 'option', 'aria-selected': current === tb.name,
               onClick: () => { setSelected(tb.name); setPreview(null) }, title: tb.comment || tb.name,
@@ -74,6 +90,7 @@
               h('button', { type: 'button', className: 'n2s-btn small primary', onClick: () => onAskTable(tbl) }, Icon.spark(13), t('schema.askAbout')),
               h(Dropdown, { label: t('result.more'), trigger: { content: Icon.more() }, items: [
                 { label: t('schema.overviewPin'), icon: Icon.pin(14), onClick: async () => { if (await confirmDialog({ title: t('schema.overviewPinConfirm') })) runOverview(tbl, true) } },
+                { label: t('schema.reanalyzeThis'), icon: Icon.refresh(14), disabled: busy, onClick: () => analyze(true, [tbl.name]) },
                 { label: t('schema.copyName'), icon: Icon.copy(14), onClick: () => navigator.clipboard?.writeText(tbl.name) },
               ] })),
             preview && h('div', { style: { marginBottom: 16 } },

@@ -531,6 +531,10 @@
 .n2s-cp-wrap{margin-top:14px;padding-top:6px;border-top:.5px solid var(--n2s-line)}
 .n2s-cp .n2s-radios{display:grid;gap:6px}
 .n2s-cp .n2s-radio span{display:grid;gap:2px}
+.n2s-pickbar{display:grid;gap:8px;margin:0 0 6px;padding:8px;border-radius:8px;background:var(--n2s-fill)}
+.n2s-pickbar-row{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.n2s-pickitem{display:flex;align-items:center;gap:8px;cursor:pointer}
+.n2s-pickitem input{margin:0}
 /* ---- dashboard v2 ---- */
 .n2s-srcbadge{display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
 .n2s-seg.small button{height:26px;padding:0 10px;font-size:12px}
