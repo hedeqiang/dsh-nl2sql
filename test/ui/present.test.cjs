@@ -1,4 +1,4 @@
-// Feature "present" (client-src/25a-present.js) in jsdom against canned RPCs: dashboard menu items
+// Feature "present" (client-src/features/present.js) in jsdom against canned RPCs: dashboard menu items
 // (export PPT / long image, send long image, presentation mode), the presentation overlay
 // (portal, clock, refresh selector, ←/→ between boards, Esc), the result menu "导出 PPT",
 // and 管理 → 多维表格同步 (list, run, editor validation). Bootstrap copied from client-dom.test.cjs.

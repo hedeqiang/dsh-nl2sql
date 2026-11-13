@@ -10,7 +10,7 @@
     let uiLang = 'zh'
     // LocaleSnapshot is { active, locales, revision } (dsh-client-locale); older hosts passed a string.
     /**
-     * Extension points for feature files (client-src/2x-*.js). Each feature calls
+     * Extension points for feature files (client-src/features/*.js). Each feature calls
      * `extend.<point>.push(...)` at module evaluation:
      *   adminSections: { id, label: (t) => string, icon: () => node, Component({ t, ds, datasources, onNavigate }) }
      *   dashboardMenu: (ctx: { t, boardId, widgets, filters }) => [Dropdown items]

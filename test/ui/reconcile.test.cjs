@@ -1,4 +1,4 @@
-// 管理 → 对账 (client-src/22a-reconcile.js) rendered in jsdom against canned RPCs: job list with last
+// 管理 → 对账 (client-src/features/reconcile.js) rendered in jsdom against canned RPCs: job list with last
 // run status, editor (two panes, key / compare mapping, options, schedule, channel), dry run with
 // summary + difference tables (ResultView), run history, and the nl2sql_reconcile tool view.
 // Bootstrap copied from client-dom.test.cjs.

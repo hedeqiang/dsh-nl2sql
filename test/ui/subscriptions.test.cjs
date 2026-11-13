@@ -1,4 +1,4 @@
-// 管理 → 群订阅 (client-src/23a-subscriptions.js) rendered in jsdom against canned RPCs.
+// 管理 → 群订阅 (client-src/features/subscriptions.js) rendered in jsdom against canned RPCs.
 // Bootstrap copied from client-dom.test.cjs.
 const path = require('node:path')
 const fs = require('node:fs')

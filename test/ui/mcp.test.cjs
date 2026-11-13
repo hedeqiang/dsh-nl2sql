@@ -1,4 +1,4 @@
-// 管理 → MCP 接入 (client-src/26a-mcp.js) rendered in jsdom against canned RPCs.
+// 管理 → MCP 接入 (client-src/features/mcp.js) rendered in jsdom against canned RPCs.
 // Bootstrap copied from client-dom.test.cjs.
 const path = require('node:path')
 const fs = require('node:fs')

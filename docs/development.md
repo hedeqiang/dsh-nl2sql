@@ -43,23 +43,35 @@ The browser side (`dsh.client` in `package.json`) is a single module, [`lib/clie
 | `channels/lark.js`, `telegram.js`, `wecom.js`, `dingtalk.js` | Platform adapters |
 | `im.js`, `lark-bot.js` | Compatibility re-exports for old import paths |
 | `xlsx.js` | Excel / CSV reading and writing |
-| `client-src/*.js` | Page source, split by feature — **edit these** |
+| `client-src/**/*.js` | Page source, grouped by role (see below) — **edit these** |
 | `lib/client.js` | Generated from `client-src/` — **do not edit by hand** |
 | `lib/client.echarts.js` | Bundled ECharts (`node scripts/build-echarts.mjs`) |
 | `eval/` | Synthetic database and knowledge for an isolated accuracy benchmark |
 
 ### The browser bundle
 
-The files in `client-src/` are consecutive slices of one module factory function and share a single scope; [`scripts/build-client.mjs`](../scripts/build-client.mjs) concatenates them in file-name order into `lib/client.js`. Name new files so they sort into the right place (for example `15b-…` between `15-…` and `16-…`). Functions are hoisted within the factory, so order matters only for top-level `const` values used during module evaluation.
+The files in `client-src/` are consecutive slices of one module factory function and share a single scope; [`scripts/build-client.mjs`](../scripts/build-client.mjs) concatenates them into `lib/client.js` in the order of its `SECTIONS` list. They are grouped by role:
 
-UI text goes through `t(key)` / `fmt(t, key, params)`. Every key needs both a `zh` and an `en` entry in `client-src/01-locale.js`. Use `joinList` and `colon` from `06-utilities.js` instead of hard-coded Chinese punctuation.
+| Folder | Contents |
+| --- | --- |
+| `core/` | Factory prelude, locale strings, RPC, store, CSS, icons, shared utilities and `extend`, toasts and dialogs, charts |
+| `pages/` | The everyday tabs and their building blocks (sources, schema, ask, knowledge, history, dashboard, page shell, …) |
+| `channels/` | IM channel helpers, Markdown preview, send dialog and the channel page |
+| `admin/` | Sections behind the 管理 tab (alerts, evaluation, members, group question permissions, settings, …) |
+| `host/` | UI contributed to DSH conversations: composer control and tool views |
+| `features/` | Self-contained feature modules that register through `extend` |
+| `apply.js` | Closes the factory; must stay last |
+
+When you add a file, add it to `SECTIONS` too: the build (and `--check` in the test suite) fails on files that are not listed, or listed but missing. Functions are hoisted within the factory, so order matters only for top-level `const` values used during module evaluation.
+
+UI text goes through `t(key)` / `fmt(t, key, params)`. Every key needs both a `zh` and an `en` entry in `client-src/core/locale.js`. Use `joinList` and `colon` from `core/utilities.js` instead of hard-coded Chinese punctuation.
 
 ## Adding a feature
 
 New features plug in without editing `index.js` or the page shell:
 
 - **Server:** create `service/<feature>.js` exporting `{ name, methods, rpc(service), tools(ctx, service, helpers), start?(ctx, service) }` and add it to [`service/features.js`](../service/features.js). `methods` are mixed into the service; a method named `jobs_<feature>(now)` returns scheduler jobs `[{ id, due(now), run() }]` that the in-process scheduler runs (see `lastDailySlot` in `service/shared.js`). Queries must go through `runQuery` so read-only admission, access policies, row-level rules, masking and audit apply.
-- **Client:** create `client-src/2Nx-<feature>.js` and register UI through `extend.*` (defined in `client-src/06-utilities.js`): `adminSections` (with an optional `group`), `dashboardMenu`, `dashboardBar`, `resultMenu`, `resultPanels`, `schemaPanels`, `askPanels` and `toolViews`. `client-src/99-apply.js` must stay last: it closes the module factory.
+- **Client:** create `client-src/features/<feature>.js`, list it in `SECTIONS` in `scripts/build-client.mjs` (before `apply.js`), and register UI through `extend.*` (defined in `client-src/core/utilities.js`): `adminSections` (with an optional `group`), `dashboardMenu`, `dashboardBar`, `resultMenu`, `resultPanels`, `schemaPanels`, `askPanels` and `toolViews`. `client-src/apply.js` must stay last: it closes the module factory.
 - **Agent rules:** describe new tools in the preset rules in `cordis.patch.yml` — in the shared core (`&nl2sql-core`) unless the tool only applies to page or bot conversations. Keep tool results the model reads compact (`JSON.stringify` without indentation) and under the 16384-character pruning threshold of the presets.
 
 Existing feature modules: `freshness` (data health), `reconcile`, `subscriptions`, `proactive` (digests, goals, forecast, alert attribution), `present` (PPT, long image, presentation mode, Bitable) and `mcp`.

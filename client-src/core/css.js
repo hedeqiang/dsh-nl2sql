@@ -497,7 +497,7 @@
 .n2s-pro-pct.ok{color:var(--n2s-ok)}.n2s-pro-pct.warn{color:color-mix(in srgb,var(--n2s-warn) 85%,black)}.n2s-pro-pct.err{color:var(--n2s-err)}
 .n2s-pro-preview{margin-top:10px;padding:12px;border-radius:var(--n2s-radius-sm);background:var(--n2s-fill)}
 .n2s-pro-preview-charts{display:grid;gap:10px;margin-top:10px}
-/* ---- data freshness / health (21a-freshness.js) ---- */
+/* ---- data freshness / health (features/freshness.js) ---- */
 .n2s-fq-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;padding:6px 10px;border-radius:var(--n2s-radius-sm);font-size:12.5px;line-height:1.5;color:color-mix(in srgb,var(--n2s-warn) 80%,black);background:color-mix(in srgb,var(--n2s-warn) 12%,transparent)}
 .n2s-fq-panel{border:.5px solid var(--n2s-line-2);border-radius:var(--n2s-radius-sm);padding:6px 10px;margin-bottom:12px}
 .n2s-fq-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 16px;margin-top:6px}

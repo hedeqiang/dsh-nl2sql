@@ -1,4 +1,4 @@
-// Feature "proactive" (client-src/24a-proactive.js) in jsdom against canned RPCs:
+// Feature "proactive" (client-src/features/proactive.js) in jsdom against canned RPCs:
 // goal chips on the dashboard, "预测未来 7 天" in the result menu + forecast panel,
 // 管理 → 目标 and 管理 → 每日简报 (list, preview, form), nl2sql_forecast tool view.
 // Bootstrap copied from client-dom.test.cjs.

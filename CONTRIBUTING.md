@@ -28,8 +28,8 @@ Read [docs/development.md](docs/development.md) for the project layout, how the 
 1. Create a branch from `main`.
 2. Make the change:
    - Host logic lives in `service/*.js`, IM adapters in `channels/*.js`, agent tools and RPC registration in `index.js`.
-   - The page lives in `client-src/*.js`. Run `node scripts/build-client.mjs` afterwards and commit the regenerated `lib/client.js`; never edit `lib/client.js` by hand.
-   - Every user-facing string needs both Chinese and English entries in `client-src/01-locale.js`.
+   - The page lives in `client-src/**/*.js`. Run `node scripts/build-client.mjs` afterwards and commit the regenerated `lib/client.js`; never edit `lib/client.js` by hand.
+   - Every user-facing string needs both Chinese and English entries in `client-src/core/locale.js`.
 3. Add or update tests (`test/unit`, `test/integration`, `test/ui`). Security-related changes (SQL admission, access control, roles, row-level rules, bot authorization) must include a test that reproduces the issue.
 4. Run `npm test` and make sure it passes.
 5. Add an entry under **Unreleased** in [CHANGELOG.md](CHANGELOG.md).
