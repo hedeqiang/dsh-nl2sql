@@ -316,6 +316,9 @@ RECORD_REF.bitableRun = 'syncId'
 // Daily digest runs (service/proactive.js).
 RECORD_LIMITS.digestRun = 1000
 RECORD_REF.digestRun = 'digestId'
+// Milestone checks (service/milestones.js): one per rule and day, with the events found.
+RECORD_LIMITS.milestoneRun = 2000
+RECORD_REF.milestoneRun = 'ruleId'
 // MCP per-token call log (service/mcp.js): time, method/tool, data source, ms, status, rows.
 RECORD_LIMITS.mcpCall = 5000
 RECORD_REF.mcpCall = 'tokenId'

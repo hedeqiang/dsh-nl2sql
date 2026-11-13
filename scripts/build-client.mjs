@@ -73,6 +73,7 @@ export const SECTIONS = [
   'features/proactive.js',
   'features/present.js',
   'features/mcp.js',
+  'features/milestones.js',
 
   // registers slots and closes the factory: keep last
   'apply.js',

@@ -9,7 +9,7 @@
     // Feature sections (extend.adminSections) go before 设置.
     const adminSections = () => [...BASE_ADMIN_SECTIONS.slice(0, -1), ...extend.adminSections.map(x => x.id), 'settings']
     // Nav groups: feature sections are grouped by purpose so the list stays scannable.
-    const NAV_GROUP_OF = { sources: 'core', members: 'core', automation: 'core', push: 'core', health: 'insight', reconcile: 'insight', goals: 'insight', digests: 'insight', subscriptions: 'insight', bitable: 'connect', mcp: 'connect', settings: 'end' }
+    const NAV_GROUP_OF = { sources: 'core', members: 'core', automation: 'core', push: 'core', health: 'insight', reconcile: 'insight', goals: 'insight', digests: 'insight', milestones: 'insight', subscriptions: 'insight', bitable: 'connect', mcp: 'connect', settings: 'end' }
     const navGroupOf = (k) => NAV_GROUP_OF[k] ?? extend.adminSections.find(x => x.id === k)?.group ?? 'insight'
     const NAV_GROUP_ORDER = ['core', 'insight', 'connect', 'end']
     const NAV_KEY = 'nl2sql:nav'

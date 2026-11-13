@@ -535,6 +535,18 @@
 .n2s-pickbar-row{display:flex;align-items:center;gap:10px;white-space:nowrap}
 .n2s-pickitem{display:flex;align-items:center;gap:8px;cursor:pointer}
 .n2s-pickitem input{margin:0}
+/* ---- milestones (features/milestones.js) ---- */
+.n2s-ms-kinds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:720px){.n2s-ms-kinds{grid-template-columns:1fr}}
+.n2s-ms-kind{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--n2s-line);border-radius:var(--n2s-radius-sm);cursor:pointer}
+.n2s-ms-kind:hover{background:var(--n2s-hover)}
+.n2s-ms-kind input{margin-top:3px}
+.n2s-ms-kind>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.n2s-ms-kind-title{font-size:13px;font-weight:500}
+.n2s-ms-bt{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto}
+.n2s-ms-bt-day{display:flex;gap:12px;align-items:flex-start;padding-bottom:8px;border-bottom:1px solid var(--n2s-line)}
+.n2s-ms-bt-day:last-child{border-bottom:0}
+.n2s-ms-bt-date{flex:none;width:84px;font-size:12px;color:var(--n2s-muted);font-variant-numeric:tabular-nums;padding-top:2px}
 /* ---- dashboard v2 ---- */
 .n2s-srcbadge{display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
 .n2s-seg.small button{height:26px;padding:0 10px;font-size:12px}

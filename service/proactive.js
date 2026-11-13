@@ -16,11 +16,11 @@ import { UserError, clampInt, fmtNum, lastDailySlot, newId, oneOf, requireText, 
 const DAY = 86400000
 const pad = (n) => String(n).padStart(2, '0')
 /** Local calendar date 'YYYY-MM-DD'. */
-const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
+export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+export const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
 const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 /** A time label (any driver format) → local 'YYYY-MM-DD', or null. */
-function dayKey(v) {
+export function dayKey(v) {
   const s = String(v ?? '')
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
   if (!m) return null
@@ -47,7 +47,7 @@ function numText(v, lang) {
 const pctText = (p) => (p === null || p === undefined ? '—' : `${p >= 0 ? '+' : ''}${(p * 100).toFixed(0)}%`)
 
 /** Time series view of a result: { xi, yi, points:[{x,y}] } or null (needs a time x and one measure). */
-function seriesOf(result) {
+export function seriesOf(result) {
   if (!result?.columns?.length || !Array.isArray(result.rows)) return null
   const cols = result.columns
   if (result.chart?.series) return null

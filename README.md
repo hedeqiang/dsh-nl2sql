@@ -53,6 +53,7 @@ English · [简体中文](README.zh-CN.md)
 - Cross-source reconciliation: compare two queries on two data sources by key, list rows missing on either side and value differences; save as a daily job that pushes differences with an Excel attachment.
 - Chat subscriptions: "@bot send this to the group every day at 9" or "tell me when withdrawals exceed 500k" creates a subscription or alert delivered to that chat.
 - Daily digest with the notable changes and their main contributors, automatic attribution in alert messages, metric goals with progress and projection, and time-series forecasts.
+- Milestones: a celebration card in the group when a metric sets a daily or monthly record, grows several days in a row, or its running total passes a round number; quiet days send nothing, and a 30-day replay shows what a rule would post.
 
 **Present and connect**
 - Export a dashboard or results to PowerPoint or one long image (also sendable to Lark / Telegram); presentation mode for wall screens with auto refresh and rotation.

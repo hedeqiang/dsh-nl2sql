@@ -333,7 +333,7 @@ export const methods = {
   },
 
   /** Query a governed metric from the metric library (definition enforced, not re-derived by the model). */
-  async queryMetric({ datasourceId, sessionId, metric: ref, grain, dimensions = [], range, from, to, filters = [], limit, title, source = 'agent', actor, chart }) {
+  async queryMetric({ datasourceId, sessionId, metric: ref, grain, dimensions = [], range, from, to, filters = [], limit, title, source = 'agent', actor, chart, maxRows, confirmScan }) {
     const ds = this.datasourceForSession(sessionId, datasourceId)
     const metric = this.findMetric(ds, ref)
     if (!metric) {
@@ -347,7 +347,7 @@ export const methods = {
     const built = buildMetricSql({ metric, dialect: ds.type ?? 'mysql', grain, dimensions, range, from, to, filters, limit: limit ?? 1000, now: new Date() })
     if (built.error) throw new UserError('nl2sql/invalid', built.error)
     const ch = chart ?? (grain ? { type: dimensions.length ? 'line' : 'area', x: '时间', y: [metric.name], ...(dimensions.length ? { series: dimensions[0] } : {}) } : dimensions.length ? { type: 'bar', x: dimensions[0], y: [metric.name] } : { type: 'kpi', y: [metric.name] })
-    const result = await this.runQuery({ governed: true, sql: built.sql, datasourceId: ds.id, sessionId, title: title || `${metric.name}${grain ? ` · 按${{ day: '天', week: '周', month: '月', hour: '小时', year: '年' }[grain] ?? grain}` : ''}${dimensions.length ? ` · 按${dimensions.join('、')}` : ''}`, chart: ch, source, actor, useCache: true })
+    const result = await this.runQuery({ governed: true, sql: built.sql, datasourceId: ds.id, sessionId, title: title || `${metric.name}${grain ? ` · 按${{ day: '天', week: '周', month: '月', hour: '小时', year: '年' }[grain] ?? grain}` : ''}${dimensions.length ? ` · 按${dimensions.join('、')}` : ''}`, chart: ch, source, actor, useCache: true, ...(maxRows ? { maxRows } : {}), ...(confirmScan ? { confirmScan: true } : {}) })
     return { ...result, metric: { id: metric.id, name: metric.name, unit: metric.unit, expression: metric.expression } }
   },
 

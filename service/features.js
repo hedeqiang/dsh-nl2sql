@@ -11,6 +11,7 @@ import { FEATURE as present } from './present.js'
 import { FEATURE as mcp } from './mcp.js'
 import { FEATURE as proactive } from './proactive.js'
 import { FEATURE as freshness } from './freshness.js'
+import { FEATURE as milestones } from './milestones.js'
 export const FEATURES = [
   present,
   mcp,
@@ -18,4 +19,5 @@ export const FEATURES = [
   subscriptions,
   proactive,
   freshness,
+  milestones,
 ]
