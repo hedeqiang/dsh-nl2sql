@@ -54,13 +54,14 @@ The files in `client-src/` are consecutive slices of one module factory function
 
 | Folder | Contents |
 | --- | --- |
-| `core/` | Factory prelude, locale strings, RPC, store, CSS, icons, shared utilities and `extend`, toasts and dialogs, charts |
+| `prelude.js` | Opens the factory (React, constants); must stay first |
+| `core/` | Locale strings, RPC, store, CSS, icons, shared utilities and `extend`, toasts and dialogs, charts |
 | `pages/` | The everyday tabs and their building blocks (sources, schema, ask, knowledge, history, dashboard, page shell, …) |
 | `channels/` | IM channel helpers, Markdown preview, send dialog and the channel page |
 | `admin/` | Sections behind the 管理 tab (alerts, evaluation, members, group question permissions, settings, …) |
 | `host/` | UI contributed to DSH conversations: composer control and tool views |
 | `features/` | Self-contained feature modules that register through `extend` |
-| `apply.js` | Closes the factory; must stay last |
+| `apply.js` | Registers the page, sidebar entry, composer control and tool views, then closes the factory; must stay last |
 
 When you add a file, add it to `SECTIONS` too: the build (and `--check` in the test suite) fails on files that are not listed, or listed but missing. Functions are hoisted within the factory, so order matters only for top-level `const` values used during module evaluation.
 

@@ -2,8 +2,9 @@
 // The browser half must be one module-loader factory, so sections share one
 // closure scope; each section file is a slice of that factory body. There are no
 // imports between sections: order matters only for top-level `const` values used
-// while the factory runs (functions are hoisted). core/prelude.js opens the
-// factory and apply.js closes it, so they stay first and last.
+// while the factory runs (functions are hoisted). prelude.js opens the factory
+// and apply.js registers the UI and closes it; both sit at the top of client-src/
+// and stay first and last (the build checks this).
 //   node scripts/build-client.mjs           build
 //   node scripts/build-client.mjs --check   verify lib/client.js is up to date
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -11,8 +12,10 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const SECTIONS = [
-  // core: factory prelude, i18n, RPC, state, styles, icons, shared helpers, charts
-  'core/prelude.js',
+  // opens the factory: keep first
+  'prelude.js',
+
+  // core: i18n, RPC, state, styles, icons, shared helpers, charts
   'core/locale.js',
   'core/rpc.js',
   'core/store.js',
@@ -71,7 +74,7 @@ export const SECTIONS = [
   'features/present.js',
   'features/mcp.js',
 
-  // closes the factory: keep last
+  // registers slots and closes the factory: keep last
   'apply.js',
 ]
 
@@ -94,6 +97,8 @@ function build() {
     ...missing.map(f => `listed in SECTIONS but missing: client-src/${f}`),
     ...unlisted.map(f => `not listed in SECTIONS (scripts/build-client.mjs): client-src/${f}`),
     ...dupes.map(f => `listed twice in SECTIONS: ${f}`),
+    ...(SECTIONS[0] === 'prelude.js' ? [] : ['SECTIONS must start with prelude.js (it opens the factory)']),
+    ...(SECTIONS.at(-1) === 'apply.js' ? [] : ['SECTIONS must end with apply.js (it closes the factory)']),
   ]
   if (problems.length) { console.error(problems.join('\n')); process.exit(1) }
   return SECTIONS.map(f => readFileSync(join(dir, f), 'utf8').replace(/\n$/, '')).join('\n') + '\n'
