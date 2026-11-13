@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-11-13
+
+### Added
+- Data freshness can be switched off, or hidden from the page only (**Manage → Data health → Settings**). When off, nothing is shown under results or in Schema, no scheduled checks run and the agent's `nl2sql_freshness` tool reports that it is off; "hide on page" keeps checks and notifications but removes the warning bars and the Schema panel. The Data health page keeps showing the data either way.
+
 ## [0.14.3] - 2026-11-13
 
 ### Changed
@@ -159,7 +164,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.3...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.4...HEAD
+[0.14.4]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.3...v0.14.4
 [0.14.3]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.14.0...v0.14.1

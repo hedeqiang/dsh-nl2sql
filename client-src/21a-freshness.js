@@ -17,19 +17,21 @@
           const key = `${datasourceId}\u0000${sql ?? ''}`
           const hit = map.get(key)
           if (hit && Date.now() - hit.at < TTL) return hit.promise
-          const promise = call('freshnessFor', { datasourceId, ...(sql ? { sql } : {}) })
+          const promise = call('freshnessFor', { datasourceId, panel: true, ...(sql ? { sql } : {}) })
           map.set(key, { at: Date.now(), promise })
           promise.catch(() => map.delete(key))
           return promise
         },
         async refresh(datasourceId) {
-          const v = await call('freshnessFor', { datasourceId, refresh: true })
+          const v = await call('freshnessFor', { datasourceId, refresh: true, panel: true })
           for (const k of [...map.keys()]) if (k.startsWith(`${datasourceId}\u0000`)) map.delete(k)
           map.set(`${datasourceId}\u0000`, { at: Date.now(), promise: Promise.resolve(v) })
           rev++
           for (const f of subs) f()
           return v
         },
+        /** Drop everything (e.g. after the show / enable settings change) and re-render subscribers. */
+        reset() { map.clear(); rev++; for (const f of subs) f() },
         subscribe(f) { subs.add(f); return () => subs.delete(f) },
         rev: () => rev,
       }
@@ -78,6 +80,7 @@
         fqCache.get(dsId, sql).then(v => alive && setView(v), () => {})
         return () => { alive = false }
       }, [dsId, sql, rev])
+      if (view?.disabled) return null
       const stale = (view?.tables ?? []).filter(x => x.stale)
       if (!stale.length) return null
       return h('div', { className: 'n2s-fq-bar', role: 'status' },
@@ -106,7 +109,7 @@
         return () => { alive = false }
       }, [ds?.id, rev])
       const v = state.value
-      if (!ds || state.error || !v || !v.tables?.length) return null
+      if (!ds || state.error || !v || v.disabled || !v.tables?.length) return null
       const stale = v.tables.filter(x => x.stale).length
       const warn = v.tables.filter(x => x.status === 'warn').length
       const expanded = open ?? stale > 0
@@ -173,6 +176,7 @@
           const { overrides: _o, ...freshness } = form.freshness
           const out = await call('saveHealthSettings', { freshness: { ...freshness, intervalMin: Number(freshness.intervalMin), staleHours: Number(freshness.staleHours), channelId: freshness.channelId || null }, quality: { ...form.quality, dropPoints: Number(form.quality.dropPoints), channelId: form.quality.channelId || null } })
           setForm(structuredClone(out))
+          fqCache.reset()
           notify(t('fq.saved'), 'ok')
           onSaved?.()
         } catch (e) { notifyError(e) }
@@ -180,6 +184,7 @@
       return h('div', { className: 'n2s-card' },
         h('div', { className: 'n2s-form' },
           h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: Boolean(form.freshness.enabled), onChange: e => setF('enabled', e.target.checked) }), t('fq.set.fEnabled')),
+          h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: form.freshness.showInUi !== false && Boolean(form.freshness.enabled), disabled: !form.freshness.enabled, onChange: e => setF('showInUi', e.target.checked) }), t('fq.set.showInUi')),
           h('label', { className: 'n2s-check' }, h('input', { type: 'checkbox', checked: Boolean(form.quality.enabled), onChange: e => setQ('enabled', e.target.checked) }), t('fq.set.qEnabled')),
           h('label', { className: 'n2s-field' }, h('span', null, t('fq.set.interval')), h('input', { className: 'n2s-input', type: 'number', min: 5, max: 1440, value: form.freshness.intervalMin, onChange: e => setF('intervalMin', e.target.value) })),
           h('label', { className: 'n2s-field' }, h('span', null, t('fq.set.time')), h('input', { className: 'n2s-input', type: 'time', value: form.quality.time, onChange: e => setQ('time', e.target.value) })),
@@ -194,7 +199,7 @@
 
     function HealthFreshnessTable({ t, dsId }) {
       const rev = useFqRev()
-      const fr = useAsync(() => (dsId ? fqCache.get(dsId) : null), [dsId, rev])
+      const fr = useAsync(() => (dsId ? call('freshnessFor', { datasourceId: dsId }) : null), [dsId, rev])
       const settings = useAsync(() => call('healthSettings'), [dsId, rev])
       const events = useAsync(() => (dsId ? call('freshnessEvents', { datasourceId: dsId, limit: 10 }) : []), [dsId, rev])
       const [busy, setBusy] = useState(false)

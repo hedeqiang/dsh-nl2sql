@@ -114,6 +114,22 @@ try {
     await call('saveHealthSettings', { freshness: { overrides: {} } })
   })
 
+  await test('turning freshness off (or hiding it) empties the page panels; the tool says it is off', async () => {
+    const on = await call('freshnessFor', { datasourceId: dsId, panel: true, refresh: true })
+    assert.ok(on.tables.length > 0, 'panel data while on')
+    await call('saveHealthSettings', { freshness: { showInUi: false } })
+    const hidden = await call('freshnessFor', { datasourceId: dsId, panel: true })
+    assert.equal(hidden.disabled, true); assert.deepEqual(hidden.tables, [])
+    assert.ok((await call('freshnessFor', { datasourceId: dsId })).tables.length > 0, 'the admin page still sees the data')
+    await call('saveHealthSettings', { freshness: { showInUi: true, enabled: false } })
+    const off = await call('freshnessFor', { datasourceId: dsId, panel: true })
+    assert.equal(off.disabled, true)
+    const t = await tool('nl2sql_freshness', {})
+    assert.equal(t.disabled, true); assert.match(t.message, /turned off/)
+    assert.equal(service.schedulerJobs(new Date(Date.now() + 86400000)).find(j => j.id === 'freshness').due(new Date(Date.now() + 86400000)), false, 'no scheduled check')
+    await call('saveHealthSettings', { freshness: { enabled: true } })
+  })
+
   await test('access policy: denied tables are neither measured nor reported', async () => {
     await call('savePolicy', { id: dsId, policy: { mode: 'deny', tables: ['orders'] } })
     try {

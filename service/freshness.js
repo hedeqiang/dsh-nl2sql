@@ -19,7 +19,8 @@ import { UserError, lastDailySlot, newId } from './shared.js'
 
 // ------------------------------------------------------------------ constants
 
-export const FRESHNESS_DEFAULTS = { enabled: true, intervalMin: 30, staleHours: 24, overrides: {}, channelId: null }
+// enabled: scheduled checks + notifications + the agent tool; showInUi: warning bars under results and the schema panel.
+export const FRESHNESS_DEFAULTS = { enabled: true, showInUi: true, intervalMin: 30, staleHours: 24, overrides: {}, channelId: null }
 export const QUALITY_DEFAULTS = { enabled: false, time: '06:30', channelId: null, dropPoints: 10, maxTableRows: 5000000, maxTables: 60 }
 const DATE_TYPES = new Set(['date', 'datetime', 'timestamp', 'timestamptz'])
 const NUM_TYPES = new Set(['tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint', 'decimal', 'numeric', 'float', 'double', 'real'])
@@ -271,6 +272,7 @@ export const methods = {
     if (freshness) {
       const s = this.freshnessState().settings
       if (freshness.enabled !== undefined) s.enabled = Boolean(freshness.enabled)
+      if (freshness.showInUi !== undefined) s.showInUi = Boolean(freshness.showInUi)
       if (freshness.intervalMin !== undefined) s.intervalMin = Math.round(intIn(freshness.intervalMin, 5, 1440, 'intervalMin'))
       if (freshness.staleHours !== undefined) s.staleHours = intIn(freshness.staleHours, 0.25, 24 * 90, 'staleHours')
       if (freshness.channelId !== undefined) s.channelId = channel(freshness.channelId)
@@ -422,9 +424,12 @@ export const methods = {
   },
 
   /** RPC: stored freshness (computed on first use or when refresh); `sql` narrows to referenced tables. */
-  async freshnessFor({ datasourceId, refresh = false, sql } = {}) {
+  async freshnessFor({ datasourceId, refresh = false, sql, panel = false } = {}) {
     const ds = this.requireDatasource(datasourceId ?? this.state.current)
     const f = this.freshnessState()
+    // Page panels (result bars, schema panel) ask with panel: true; when the feature or its
+    // page display is off they get nothing and no query runs.
+    if (panel && (!f.settings.enabled || f.settings.showInUi === false)) return { datasourceId: ds.id, disabled: true, tables: [] }
     let store = f[ds.id]
     if (refresh || !store) {
       if (refresh) store = await this.withJobLock(`freshness:${ds.id}`, () => this.refreshFreshness(ds))
@@ -737,6 +742,7 @@ export const FEATURE = {
       presentCall: (args) => ({ card: 'generic', title: args?.tables?.length ? `数据新鲜度 ${args.tables.join(', ')}` : '数据新鲜度', kind: 'read' }),
       execute: async (args, exec) => {
         try {
+          if (!service.freshnessState().settings.enabled) return { disabled: true, message: 'Data freshness checks are turned off by the administrator (Data Q&A → Manage → Data health). Answer without freshness warnings.' }
           return await service.freshnessForSession({ sessionId: exec?.agent?.id, datasource: args?.datasource, tables: args?.tables })
         } catch (error) {
           throw error instanceof UserError ? new Error(error.message) : error

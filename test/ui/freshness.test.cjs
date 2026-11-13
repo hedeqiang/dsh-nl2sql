@@ -122,6 +122,24 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     responses.getResult = result
   })
 
+  await test('panels render nothing when freshness is off or hidden (server answers disabled); settings show the toggle', async () => {
+    const saved = responses.freshnessFor
+    responses.freshnessFor = () => ({ disabled: true, tables: [] })
+    try {
+    assert.ok(rpcCalls.some(c => c.method === 'freshnessFor' && c.payload.panel === true), 'panels ask with panel: true')
+    const C = regs['tool.call.toolview:nl2sql_query']
+    const holder = document.createElement('div'); document.body.appendChild(holder)
+    const r3 = createRoot(holder)
+    responses.getResult = { ...result, resultId: 'r9', sql: 'SELECT COUNT(*) AS n FROM withdrawals WHERE 1=1' }
+    await act(async () => { r3.render(React.createElement(C, { phase: 'result', block: { meta: { ...result, resultId: 'r9', sql: 'SELECT COUNT(*) AS n FROM withdrawals WHERE 1=1' }, call: { argsRaw: '{}' }, content: [] }, callId: 'c9' })) }); await settle(100)
+    assert.ok(!holder.querySelector('.n2s-fq-bar'), 'no warning bar')
+    await act(async () => { r3.unmount() }); holder.remove()
+    } finally {
+      responses.freshnessFor = saved
+      responses.getResult = result
+    }
+  })
+
   await test('tool view for nl2sql_freshness', async () => {
     const C = regs['tool.call.toolview:nl2sql_freshness']
     assert.ok(C, Object.keys(regs).join(','))

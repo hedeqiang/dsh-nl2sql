@@ -1,6 +1,7 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      'fq.set.showInUi': "在页面上显示数据新鲜度（查询结果下的滞后提示、表结构页的新鲜度面板）",
       'mcp.client.claudeCode': 'Claude Code', 'mcp.client.cline': 'Cline', 'mcp.client.windsurf': 'Windsurf', 'mcp.client.codex': 'Codex CLI', 'mcp.client.gemini': 'Gemini CLI', 'mcp.client.zed': 'Zed', 'mcp.client.continue': 'Continue',
       'mcp.where.claudeCode': '在终端运行（HTTP 直连；下方为 stdio 桥接写法）。', 'mcp.where.cline': '写入 cline_mcp_settings.json（Cline 面板 → MCP Servers → Configure）。', 'mcp.where.windsurf': '写入 Windsurf 的 mcp_config.json（Cascade → MCP → 打开配置文件）。', 'mcp.where.codex': '写入 ~/.codex/config.toml（或项目的 .codex/config.toml）。', 'mcp.where.gemini': '写入 ~/.gemini/settings.json 或项目的 .gemini/settings.json。', 'mcp.where.zed': '写入 Zed 的 settings.json。', 'mcp.where.continue': '保存为工作区 .continue/mcpServers/nl2sql.yaml。',
       'mcp.test': '测试连接', 'mcp.testOk': '连接正常：发现 {n} 个工具。', 'mcp.testFail': '连接失败：{error}', 'mcp.testFailSteps': '连接测试未通过：',
@@ -64,7 +65,7 @@
       "fq.admin.qOff": "每日质量巡检已关闭",
       "fq.admin.noDs": "请先添加数据源",
       "fq.set.title": "设置",
-      "fq.set.fEnabled": "定时检查数据新鲜度",
+      "fq.set.fEnabled": "启用数据新鲜度（定时检查、滞后通知、Agent 回答近期数据时的提醒）；关闭后页面上也不再显示",
       "fq.set.qEnabled": "每日数据质量巡检",
       "fq.set.interval": "新鲜度检查间隔（分钟）",
       "fq.set.time": "质量巡检时间",
@@ -1162,6 +1163,7 @@
       'policy.tablesLabel': '可访问的表',
     }
     const en = {
+      'fq.set.showInUi': "Show data freshness on the page (stale-data bars under results, the freshness panel in Schema)",
       'mcp.client.claudeCode': 'Claude Code', 'mcp.client.cline': 'Cline', 'mcp.client.windsurf': 'Windsurf', 'mcp.client.codex': 'Codex CLI', 'mcp.client.gemini': 'Gemini CLI', 'mcp.client.zed': 'Zed', 'mcp.client.continue': 'Continue',
       'mcp.where.claudeCode': 'Run in a terminal (HTTP; the stdio bridge variant is below).', 'mcp.where.cline': 'Add to cline_mcp_settings.json (Cline panel → MCP Servers → Configure).', 'mcp.where.windsurf': 'Add to Windsurf\'s mcp_config.json (Cascade → MCP → open config file).', 'mcp.where.codex': 'Add to ~/.codex/config.toml (or the project\'s .codex/config.toml).', 'mcp.where.gemini': 'Add to ~/.gemini/settings.json or the project\'s .gemini/settings.json.', 'mcp.where.zed': 'Add to Zed\'s settings.json.', 'mcp.where.continue': 'Save as .continue/mcpServers/nl2sql.yaml in the workspace.',
       'mcp.test': 'Test connection', 'mcp.testOk': 'Connected: {n} tools discovered.', 'mcp.testFail': 'Connection failed: {error}', 'mcp.testFailSteps': 'Connection test failed:',
@@ -1225,7 +1227,7 @@
       "fq.admin.qOff": "Daily quality patrol is off",
       "fq.admin.noDs": "Add a data source first",
       "fq.set.title": "Settings",
-      "fq.set.fEnabled": "Check data freshness on a schedule",
+      "fq.set.fEnabled": "Enable data freshness (scheduled checks, stale-data notifications, warnings in answers about recent data); when off, nothing is shown on the page either",
       "fq.set.qEnabled": "Daily data quality patrol",
       "fq.set.interval": "Freshness check interval (min)",
       "fq.set.time": "Quality patrol time",
