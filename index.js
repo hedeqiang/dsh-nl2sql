@@ -526,6 +526,7 @@ function registerRpc(ctx, service) {
     checkAllSchemas: () => service.checkAllSchemas(),
     listUsers: () => service.listUsers(),
     listSeenIdentities: (p) => service.listSeenIdentities(p ?? {}),
+    rejectSeenIdentity: (p) => service.rejectSeenIdentity(p ?? {}),
     saveUser: (p) => service.saveUser(p),
     deleteUser: (p) => service.deleteUser(p.id),
     usageByActor: (p) => service.usageByActor(p?.days ?? 30),

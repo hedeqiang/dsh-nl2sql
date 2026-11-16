@@ -1,6 +1,14 @@
     // ------------------------------------------------------------ locale
 
     const zh = {
+      "mb.pending.reject": "拒绝",
+      "mb.pending.rejectLabel": "拒绝「{name}」",
+      "mb.pending.rejected": "已拒绝「{name}」，不会再出现在这里",
+      "mb.pending.restored": "已恢复「{name}」",
+      "mb.pending.restore": "恢复",
+      "mb.pending.rejectedCount": "已拒绝 {n} 个",
+      "mb.pending.rejectHint": "拒绝只是不再提示：对方提问时机器人仍会回复「未开通」。之后想开通，仍可在「添加成员」里选到。",
+      "mb.pick.rejected": "已拒绝",
       "sub.edit": "修改",
       "sub.edit.title": "标题",
       "sub.edit.name": "名称",
@@ -1282,6 +1290,14 @@
       'policy.tablesLabel': '可访问的表',
     }
     const en = {
+      "mb.pending.reject": "Reject",
+      "mb.pending.rejectLabel": "Reject \"{name}\"",
+      "mb.pending.rejected": "Rejected \"{name}\"; it will not be listed here again",
+      "mb.pending.restored": "Restored \"{name}\"",
+      "mb.pending.restore": "Restore",
+      "mb.pending.rejectedCount": "{n} rejected",
+      "mb.pending.rejectHint": "Rejecting only stops the reminder: the bot still replies \"no access\" when they ask. You can still pick them in \"Add member\" later.",
+      "mb.pick.rejected": "rejected",
       "sub.edit": "Edit",
       "sub.edit.title": "Title",
       "sub.edit.name": "Name",

@@ -296,8 +296,21 @@ export const methods = {
   },
 
   /**
+   * Admin decision on a refused identity from the pending banner: rejected (hidden from the
+   * banner, also when it asks again) or restored. Adding it as a member later still works.
+   */
+  async rejectSeenIdentity({ platform, kind, id, rejected = true } = {}, actor) {
+    const item = (this.state.seenIdentities ?? []).find(x => x.platform === platform && x.kind === kind && x.id === String(id))
+    if (!item) throw new UserError('nl2sql/invalid', '找不到这个人或群')
+    if (rejected) { item.rejected = true; item.rejectedAt = Date.now() } else { delete item.rejected; delete item.rejectedAt }
+    this.auditAdmin(rejected ? 'member.reject' : 'member.unreject', `${item.name || item.chatName || item.id}（${kind === 'chat' ? '群' : '个人'} · ${platform}）`, actor)
+    await this.save()
+    return { platform, kind, id: item.id, rejected: Boolean(item.rejected) }
+  },
+
+  /**
    * People and group chats that talked to a bot recently, for the member form:
-   * [{ platform, kind:'person'|'chat', id, name?, email?, chatName?, lastAt, count, refused, memberId? }].
+   * [{ platform, kind:'person'|'chat', id, name?, email?, chatName?, lastAt, count, refused, rejected?, memberId? }].
    * `memberId` is set when the identity already belongs to a member.
    */
   listSeenIdentities({ kind, platform } = {}) {

@@ -75,26 +75,54 @@
               },
               h(PlatformMark, { t, platform: x.platform, size: 16 }),
               h('span', { className: 'n2s-pickchip-name' }, label(x)),
-              x.refused && !x.memberId && h('span', { className: 'n2s-badge warn' }, t('mb.pick.pending')),
+              x.refused && !x.memberId && h('span', { className: `n2s-badge ${x.rejected ? '' : 'warn'}` }, t(x.rejected ? 'mb.pick.rejected' : 'mb.pick.pending')),
               taken && h('span', { className: 'n2s-faint' }, t('mb.pick.added')),
               x.lastAt && h('span', { className: 'n2s-faint' }, shortTime(x.lastAt)))
             })),
         h('div', { className: 'n2s-faint n2s-small' }, kind === 'chat' ? t('mb.pick.chatsHint') : t('mb.pick.peopleHint')))
     }
 
-    /** People / groups refused by a bot because they are not members yet: add with one click. */
+    /**
+     * People / groups refused by a bot because they are not members yet: add with one click, or
+     * reject (hidden from this banner, even when they ask again; can be undone below).
+     */
     function PendingMembers({ t, onAdd }) {
       const seen = useAsync(() => call('listSeenIdentities', {}).catch(() => []), [])
       const { catalog } = useCatalog(t)
-      const pending = (seen.value ?? []).filter(x => x.refused && !x.memberId).slice(0, 6)
-      if (!pending.length) return null
-      return h('div', { className: 'n2s-notice warn n2s-pending', role: 'status', style: { marginBottom: 12 } },
-        h('div', { style: { marginBottom: 6 } }, fmt(t, 'mb.pending.title', { n: pending.length })),
-        h('div', { className: 'n2s-pickchips' }, pending.map(x => h('button', { key: `${x.platform}:${x.kind}:${x.id}`, type: 'button', className: 'n2s-pickchip', onClick: () => onAdd(x), title: `${platformName(t, x.platform, catalog)} · ${x.id}` },
-          h(PlatformMark, { t, platform: x.platform, size: 16 }),
-          h('span', { className: 'n2s-pickchip-name' }, x.name || x.chatName || x.id),
-          h('span', { className: 'n2s-faint' }, x.kind === 'chat' ? t('mb.kind2.chat') : t('mb.kind2.person')),
-          h('span', { className: 'n2s-link' }, t('mb.pending.add'))))))
+      const [busy, setBusy] = useState(null)
+      const [showRejected, setShowRejected] = useState(false)
+      const all = (seen.value ?? []).filter(x => x.refused && !x.memberId)
+      const pending = all.filter(x => !x.rejected).slice(0, 6)
+      const rejected = all.filter(x => x.rejected)
+      if (!pending.length && !rejected.length) return null
+      const keyOf = (x) => `${x.platform}:${x.kind}:${x.id}`
+      const label = (x) => x.name || x.chatName || x.id
+      const setRejected = async (x, value) => {
+        setBusy(keyOf(x))
+        try {
+          await call('rejectSeenIdentity', { platform: x.platform, kind: x.kind, id: x.id, rejected: value })
+          notify(fmt(t, value ? 'mb.pending.rejected' : 'mb.pending.restored', { name: label(x) }), 'ok')
+          seen.reload()
+        } catch (e) { notifyError(e) }
+        setBusy(null)
+      }
+      const chip = (x, actions) => h('div', { key: keyOf(x), className: 'n2s-pendchip', title: `${platformName(t, x.platform, catalog)} · ${x.id}` },
+        h(PlatformMark, { t, platform: x.platform, size: 16 }),
+        h('span', { className: 'n2s-pickchip-name' }, label(x)),
+        h('span', { className: 'n2s-faint' }, x.kind === 'chat' ? t('mb.kind2.chat') : t('mb.kind2.person')),
+        actions)
+      return h('div', { className: `n2s-notice ${pending.length ? 'warn' : ''} n2s-pending`, role: 'status', style: { marginBottom: 12 } },
+        pending.length > 0 && h(React.Fragment, null,
+          h('div', { style: { marginBottom: 6 } }, fmt(t, 'mb.pending.title', { n: pending.length })),
+          h('div', { className: 'n2s-pickchips' }, pending.map(x => chip(x, h(React.Fragment, null,
+            h('button', { type: 'button', className: 'n2s-link', disabled: busy === keyOf(x), onClick: () => onAdd(x) }, t('mb.pending.add')),
+            h('span', { className: 'n2s-pendchip-sep', 'aria-hidden': true }),
+            h('button', { type: 'button', className: 'n2s-link n2s-pendchip-reject', disabled: busy === keyOf(x), 'aria-label': fmt(t, 'mb.pending.rejectLabel', { name: label(x) }), onClick: () => setRejected(x, true) }, t('mb.pending.reject'))))))),
+        rejected.length > 0 && h('div', { className: 'n2s-small', style: { marginTop: pending.length ? 8 : 0 } },
+          h('button', { type: 'button', className: 'n2s-link n2s-faint', 'aria-expanded': showRejected, onClick: () => setShowRejected(v => !v) }, fmt(t, 'mb.pending.rejectedCount', { n: rejected.length }), ' ', Icon.chev(10))),
+        showRejected && rejected.length > 0 && h('div', { className: 'n2s-pickchips', style: { marginTop: 6 } }, rejected.map(x => chip(x,
+          h('button', { type: 'button', className: 'n2s-link', disabled: busy === keyOf(x), onClick: () => setRejected(x, false) }, t('mb.pending.restore'))))),
+        h('div', { className: 'n2s-faint n2s-small', style: { marginTop: 6 } }, t('mb.pending.rejectHint')))
     }
 
     function IdentityChips({ t, u, catalog }) {

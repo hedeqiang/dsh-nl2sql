@@ -638,7 +638,7 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     await openAdmin('设置'); await openAdmin('成员与权限'); await settle(30)
     assert.match(text(), /有 2 个人或群向机器人提问时因未开通被拒绝/)
     // banner click → form prefilled (group)
-    await clickEl([...document.querySelectorAll('.n2s-pending .n2s-pickchip')].find((b) => b.textContent.includes('运营群')), 40)
+    await clickEl([...[...document.querySelectorAll('.n2s-pending .n2s-pendchip')].find((b) => b.textContent.includes('运营群')).querySelectorAll('button')].find((b) => b.textContent === '添加'), 40)
     let form = document.querySelector('.n2s-card')
     assert.equal(form.querySelector('input').value, '运营群', 'name prefilled')
     assert.equal(form.querySelector('input[aria-label="身份 1 的 ID"]').value, 'oc_ops', 'chat id prefilled')
@@ -654,6 +654,25 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.equal(form.querySelector('input[aria-label="身份 1 的邮箱（可选）"]').value, 'z6@x.com')
     await click('保存', form); await settle(30)
     assert.deepEqual(rpcCalls.filter((c) => c.method === 'saveUser').pop().payload.identities, [{ platform: 'lark', id: 'ou_new', email: 'z6@x.com' }])
+    // reject from the banner → RPC, hidden from pending, listed under "已拒绝" with restore
+    let seen = [
+      { platform: 'lark', kind: 'person', id: 'ou_spam', name: '路人甲', lastAt: Date.now(), count: 3, refused: true },
+      { platform: 'lark', kind: 'chat', id: 'oc_x', name: '外部群', chatName: '外部群', lastAt: Date.now(), count: 1, refused: true },
+    ]
+    responses.listSeenIdentities = () => seen
+    responses.rejectSeenIdentity = (p) => { seen = seen.map(x => (x.id === p.id ? { ...x, rejected: p.rejected !== false ? true : undefined } : x)); return { rejected: p.rejected !== false } }
+    await openAdmin('设置'); await openAdmin('成员与权限'); await settle(30)
+    assert.match(text(), /有 2 个人或群/)
+    await clickEl(document.querySelector('.n2s-pending button[aria-label="拒绝「路人甲」"]'), 40)
+    assert.deepEqual(rpcCalls.filter((c) => c.method === 'rejectSeenIdentity').pop().payload, { platform: 'lark', kind: 'person', id: 'ou_spam', rejected: true })
+    assert.match(text(), /有 1 个人或群/)
+    assert.match(text(), /已拒绝 1 个/)
+    await clickEl([...document.querySelectorAll('.n2s-pending button')].find((b) => b.textContent.includes('已拒绝 1 个')), 20)
+    await clickEl([...document.querySelectorAll('.n2s-pending button')].find((b) => b.textContent.trim() === '恢复'), 40)
+    assert.deepEqual(rpcCalls.filter((c) => c.method === 'rejectSeenIdentity').pop().payload, { platform: 'lark', kind: 'person', id: 'ou_spam', rejected: false })
+    assert.match(text(), /有 2 个人或群/)
+    assert.deepEqual(missingKeys(), [])
+    delete responses.rejectSeenIdentity
     delete responses.listSeenIdentities
   })
 

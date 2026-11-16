@@ -264,6 +264,20 @@ try {
     assert.equal((await call('listSeenIdentities', { kind: 'person' })).find(x => x.id === 'newbie').memberName, 'n-newbie')
   })
 
+  await test('members: a refused identity can be rejected (stays rejected when it asks again) and restored', async () => {
+    await bot.receive({ id: 'q5b', text: '查一下', userId: 'spammer', chatType: 'p2p', chatId: 'dm-spam' })
+    const r = await call('rejectSeenIdentity', { platform: 'fakeim', kind: 'person', id: 'spammer' })
+    assert.equal(r.rejected, true)
+    await bot.receive({ id: 'q5c', text: '再查一下', userId: 'spammer', chatType: 'p2p', chatId: 'dm-spam' })
+    assert.match(bot.replies.at(-1).text, /没有开通数据问答权限/, 'still told it has no access')
+    const x = (await call('listSeenIdentities', { kind: 'person' })).find(i => i.id === 'spammer')
+    assert.equal(x.rejected, true); assert.equal(x.refused, true); assert.ok(x.count >= 2)
+    assert.ok((await call('adminLog')).some(e => e.action === 'member.reject' && /spammer|n-spammer/.test(e.detail)))
+    await call('rejectSeenIdentity', { platform: 'fakeim', kind: 'person', id: 'spammer', rejected: false })
+    assert.equal((await call('listSeenIdentities', { kind: 'person' })).find(i => i.id === 'spammer').rejected, undefined)
+    await assert.rejects(call('rejectSeenIdentity', { platform: 'fakeim', kind: 'person', id: 'nobody' }), /找不到/)
+  })
+
   await test('data source: prompt lists usable sources; question routes to the matching source; 切换 pins, 自动 unpins', async () => {
     // Second data source: a local file with an obviously different subject.
     const csv = Buffer.from('city,amount\nA,10\nB,20\n').toString('base64')

@@ -419,6 +419,11 @@
 .n2s-pickchip[aria-pressed=true]{border-color:var(--n2s-accent);background:var(--n2s-accent-soft,rgba(51,112,255,.08));color:var(--n2s-accent)}
 .n2s-pickchip:disabled{opacity:.55;cursor:default}
 .n2s-pickchip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.n2s-pendchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;height:30px;padding:0 10px;border:.5px solid var(--n2s-line-2);border-radius:999px;background:var(--n2s-surface);font-size:12.5px}
+.n2s-pendchip .n2s-link{font-size:12.5px}
+.n2s-pendchip-sep{width:1px;height:12px;background:var(--n2s-line-2)}
+.n2s-pendchip .n2s-pendchip-reject{color:var(--n2s-muted)}
+.n2s-pendchip .n2s-pendchip-reject:hover{color:var(--n2s-err)}
 .n2s-idpicker{gap:6px}
 .n2s-sub-group { margin-bottom: 12px; }
 .n2s-sub-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
