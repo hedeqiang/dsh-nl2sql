@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-16
+
+### Added
+- **Reject in the pending-members banner.** *成员与权限* lists people and groups that asked a bot without access; each now has *拒绝* next to *添加*. Rejected ones no longer appear in the banner, even when they ask again, and are listed under *已拒绝 N 个* with *恢复*. Rejecting only stops the reminder: the bot still replies that they have no access, and they can still be added as members later (the member form marks them *已拒绝*). Rejections and restores are written to the admin log.
+
 ## [0.18.0] - 2026-11-16
 
 ### Added
@@ -256,7 +261,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.3...v0.16.0
