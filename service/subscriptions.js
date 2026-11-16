@@ -20,7 +20,7 @@ import { ChannelError } from '../channels/http.js'
 import { kindOf, loadAdapters } from '../channels/index.js'
 import { writeXlsx } from '../xlsx.js'
 import { chartModesOf, clip, channelUserError } from './channels.js'
-import { UserError, newId, pick } from './shared.js'
+import { UserError, newId, pick, requireText } from './shared.js'
 
 const PERIODS = ['daily', 'weekly', 'monthly']
 const GRAINS = ['hour', 'day', 'week', 'month', 'year']
@@ -94,6 +94,30 @@ function hhmm(v) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(v ?? '').trim())
   if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) throw new UserError('nl2sql/invalid', '时间格式应为 HH:MM，例如 09:00')
   return `${m[1].padStart(2, '0')}:${m[2]}`
+}
+
+/** Validated schedule fields { period, time, weekdays?, monthDay? } from tool / page input. */
+function scheduleOf(input, base = {}) {
+  const period = PERIODS.includes(input.period) ? input.period : (base.period ?? 'daily')
+  const out = { period, time: hhmm(input.time ?? base.time ?? '09:00') }
+  if (period === 'weekly') {
+    out.weekdays = [...new Set((Array.isArray(input.weekdays) ? input.weekdays : (base.weekdays ?? [1])).map(Number).filter(d => d >= 1 && d <= 7))].sort()
+    if (!out.weekdays.length) throw new UserError('nl2sql/invalid', 'weekdays 应为 1（周一）到 7（周日）')
+  }
+  if (period === 'monthly') {
+    out.monthDay = Math.trunc(Number(input.monthDay ?? base.monthDay ?? 1))
+    if (!(out.monthDay >= 1 && out.monthDay <= 31)) throw new UserError('nl2sql/invalid', 'monthDay 应为 1–31')
+  }
+  return out
+}
+
+/** Alert condition from tool / page input, filled with defaults per type. */
+function conditionOf(cond = {}) {
+  const type = ['threshold', 'change', 'anomaly'].includes(cond.type) ? cond.type : 'threshold'
+  const num = (v, d, name) => { const n = Number(v ?? d); if (!Number.isFinite(n)) throw new UserError('nl2sql/invalid', `${name} 必须是数字`); return n }
+  if (type === 'threshold') return { type, op: ['>', '>=', '<', '<=', '==', '!='].includes(cond.op) ? cond.op : '>', value: num(cond.value, 0, 'value') }
+  if (type === 'change') return { type, direction: ['up', 'down', 'any'].includes(cond.direction) ? cond.direction : 'any', pct: num(cond.pct, 20, 'pct') }
+  return { type, z: num(cond.z, 3, 'z') }
 }
 
 export const methods = {
@@ -236,16 +260,7 @@ export const methods = {
     const ds = this.requireDatasource(sub.datasourceId)
     this.assertAccess(actor, ds)
     sub.title = String(input.title || sub.title || '数据订阅').slice(0, 80)
-    sub.period = PERIODS.includes(input.period) ? input.period : 'daily'
-    sub.time = hhmm(input.time ?? '09:00')
-    if (sub.period === 'weekly') {
-      sub.weekdays = [...new Set((Array.isArray(input.weekdays) ? input.weekdays : [1]).map(Number).filter(d => d >= 1 && d <= 7))].sort()
-      if (!sub.weekdays.length) throw new UserError('nl2sql/invalid', 'weekdays 应为 1（周一）到 7（周日）')
-    }
-    if (sub.period === 'monthly') {
-      sub.monthDay = Math.trunc(Number(input.monthDay ?? 1))
-      if (!(sub.monthDay >= 1 && sub.monthDay <= 31)) throw new UserError('nl2sql/invalid', 'monthDay 应为 1–31')
-    }
+    Object.assign(sub, scheduleOf(input))
     this.state.chatSubscriptions = [...(this.state.chatSubscriptions ?? []), sub]
     this.auditAdmin('sub.create', `${sub.title} · ${scheduleText(sub)} → ${sub.chatName ?? sub.chatId}`, actor)
     await this.save()
@@ -271,11 +286,7 @@ export const methods = {
       throw new UserError('nl2sql/invalid', '请提供要监控的 resultId（本聊天中之前的查询结果）或指标名 metric')
     }
     this.assertAccess(actor, this.requireDatasource(def.datasourceId))
-    const cond = input.condition ?? {}
-    const condition = { type: cond.type ?? 'threshold' }
-    if (condition.type === 'threshold') Object.assign(condition, { op: cond.op ?? '>', value: Number(cond.value ?? 0) })
-    if (condition.type === 'change') Object.assign(condition, { direction: cond.direction ?? 'any', pct: Number(cond.pct ?? 20) })
-    if (condition.type === 'anomaly') Object.assign(condition, { z: Number(cond.z ?? 3) })
+    const condition = conditionOf(input.condition)
     const saved = await this.saveAlert({
       ...def, name: String(def.name || '群告警').slice(0, 60), condition,
       every: input.every ?? 'hour', at: input.at, cooldownMin: input.cooldownMin ?? 60, channelId: null, mention: false, enabled: true,
@@ -307,7 +318,7 @@ export const methods = {
       kind: 'alert', id: a.id, title: a.name, channelId: a.chatTarget?.channelId, chatId: a.chatTarget?.chatId, chatName: a.chatTarget?.chatName ?? null, platform: a.chatTarget?.platform,
       createdBy: a.createdBy ?? null, createdAt: a.createdAt, datasourceId: a.datasourceId, datasourceName: this.findDatasource(a.datasourceId)?.name ?? a.datasourceId,
       schedule: { '15m': '每 15 分钟检查', hour: '每小时检查', day: `每天 ${a.at ?? '09:00'} 检查` }[a.every] ?? a.every,
-      condition: a.condition, conditionText: condText, metric: a.metric ?? null,
+      condition: a.condition, conditionText: condText, metric: a.metric ?? null, every: a.every, at: a.at ?? null, cooldownMin: a.cooldownMin, mentionMe: Boolean(a.chatTarget?.mentionUser),
       status: a.chatStatus === 'suspended' ? 'suspended' : a.enabled ? 'active' : 'paused', state: a.state,
       lastDeliveredAt: a.lastFiredAt ?? null, lastRunAt: a.lastCheckedAt ?? null, lastError: a.lastError ?? null, channelName: ch?.name ?? null,
     }
@@ -349,6 +360,51 @@ export const methods = {
     await this.save()
     this.scheduleAlerts()
     return this.publicChatAlert(alert)
+  },
+
+  /**
+   * Edit one chat subscription (title, schedule, metric range / grain) or chat-created alert
+   * (name, condition, check frequency, repeat interval, @asker). What it reads and where it is
+   * delivered stay fixed: those belong to the creator and the chat.
+   */
+  async updateChatSubscription({ id, ...input } = {}, actor) {
+    const sub = (this.state.chatSubscriptions ?? []).find(s => s.id === id)
+    const alert = sub ? undefined : (this.state.alerts ?? []).find(a => a.id === id && a.chatTarget)
+    if (!sub && !alert) throw new UserError('nl2sql/invalid', '订阅或告警不存在')
+    if (sub) {
+      const next = { ...sub, ...scheduleOf(input, sub) }
+      if (next.period !== 'weekly') delete next.weekdays
+      if (next.period !== 'monthly') delete next.monthDay
+      if (input.title !== undefined) next.title = requireText(input.title, 'title', 80)
+      if (sub.source === 'metric') {
+        if (input.grain !== undefined) next.grain = input.grain && GRAINS.includes(input.grain) ? input.grain : undefined
+        if (input.range !== undefined) { if (!RANGES.includes(input.range)) throw new UserError('nl2sql/invalid', `range 应为 ${RANGES.join(' / ')}`); next.range = input.range }
+      }
+      // A new schedule never fires for a slot that has already passed.
+      next.lastSlot = Math.max(sub.lastSlot ?? 0, lastSubscriptionSlot(next, new Date()) ?? 0)
+      next.updatedAt = Date.now()
+      const before = `${sub.title} · ${scheduleText(sub)}`
+      Object.assign(sub, next)
+      if (!next.grain) delete sub.grain
+      if (!next.weekdays) delete sub.weekdays
+      if (next.monthDay === undefined) delete sub.monthDay
+      this.auditAdmin('sub.update', `${before} → ${sub.title} · ${scheduleText(sub)}`, actor)
+      await this.save()
+      return this.publicSubscription(sub)
+    }
+    const patch = { id }
+    if (input.title !== undefined || input.name !== undefined) patch.name = String(input.name ?? input.title).slice(0, 60)
+    if (input.condition !== undefined) patch.condition = conditionOf(input.condition)
+    if (input.every !== undefined) patch.every = input.every
+    if (input.at !== undefined) patch.at = hhmm(input.at)
+    if (input.cooldownMin !== undefined) patch.cooldownMin = input.cooldownMin
+    const before = this.publicChatAlert(alert)
+    const saved = await this.saveAlert(patch)
+    const stored = (this.state.alerts ?? []).find(a => a.id === saved.id)
+    if (input.mentionMe !== undefined && stored?.chatTarget) { stored.chatTarget = { ...stored.chatTarget, mentionUser: Boolean(input.mentionMe) }; await this.save() }
+    const after = this.publicChatAlert(stored)
+    this.auditAdmin('sub.alert.update', `${before.title} · ${before.conditionText} · ${before.schedule} → ${after.title} · ${after.conditionText} · ${after.schedule}`, actor)
+    return after
   },
 
   // ---------------------------------------------------------------- run
@@ -526,19 +582,44 @@ function registerTools(ctx, service, { textBlock }) {
   })
   ctx.tools.register({
     name: 'nl2sql_subscriptions',
-    description: 'Only in IM bot chats: list the subscriptions and alerts created from the CURRENT chat ("我的订阅", "有哪些告警"), or pause / resume / cancel one by id ("取消订阅", "暂停这个告警"). Viewers may list only.',
+    description: 'Only in IM bot chats: list the subscriptions and alerts created from the CURRENT chat ("我的订阅", "有哪些告警"), pause / resume / cancel one by id ("取消订阅", "暂停这个告警"), or update one ("日报改到 10 点", "阈值改成 2000"). update changes only the fields given: subscriptions take title, time, period, weekdays, monthDay and, for metric subscriptions, grain / range; alerts take name, condition, every, at, cooldownMin, mentionMe. The data it reads and the chat it goes to cannot change (create a new one instead). Viewers may list only.',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'pause', 'resume', 'cancel'] },
-        id: { type: 'string', description: 'Subscription or alert id (from list) for pause / resume / cancel.' },
+        action: { type: 'string', enum: ['list', 'pause', 'resume', 'cancel', 'update'] },
+        id: { type: 'string', description: 'Subscription or alert id (from list) for pause / resume / cancel / update.' },
+        title: { type: 'string', description: 'update: new subscription title or alert name.' },
+        time: { type: 'string', description: 'update (subscription): delivery time HH:MM.' },
+        period: { type: 'string', enum: PERIODS },
+        weekdays: { type: 'array', items: { type: 'integer' }, description: 'update (weekly subscription): 1=Mon … 7=Sun.' },
+        monthDay: { type: 'integer', description: 'update (monthly subscription): 1–31.' },
+        grain: { type: 'string', enum: GRAINS, description: 'update (metric subscription).' },
+        range: { type: 'string', enum: RANGES, description: 'update (metric subscription).' },
+        condition: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['threshold', 'change', 'anomaly'] },
+            op: { type: 'string', enum: ['>', '>=', '<', '<=', '==', '!='] },
+            value: { type: 'number' },
+            direction: { type: 'string', enum: ['up', 'down', 'any'] },
+            pct: { type: 'number' },
+            z: { type: 'number' },
+          },
+          required: ['type'],
+          additionalProperties: false,
+          description: 'update (alert): the full new condition.',
+        },
+        every: { type: 'string', enum: ['15m', 'hour', 'day'], description: 'update (alert).' },
+        at: { type: 'string', description: 'update (alert, every=day): HH:MM.' },
+        cooldownMin: { type: 'integer', description: 'update (alert): minutes between repeated notifications.' },
+        mentionMe: { type: 'boolean', description: 'update (alert): @-mention the creator when it fires.' },
       },
       required: ['action'],
       additionalProperties: false,
     },
     output: out,
     isConcurrencySafe: (args) => args?.action === 'list',
-    presentCall: (args) => ({ card: 'generic', title: args?.action === 'list' ? '本群订阅' : `订阅 · ${args?.action ?? ''}`, kind: args?.action === 'list' ? 'read' : 'edit' }),
+    presentCall: (args) => ({ card: 'generic', title: args?.action === 'list' ? '本群订阅' : `订阅 · ${{ pause: '暂停', resume: '恢复', cancel: '取消', update: '修改' }[args?.action] ?? args?.action ?? ''}`, kind: args?.action === 'list' ? 'read' : 'edit' }),
     execute: fail(async (args, exec) => {
       const ctxc = service.requireChatContext(exec.agent?.id)
       const { conv } = ctxc
@@ -546,8 +627,18 @@ function registerTools(ctx, service, { textBlock }) {
       const items = [...mine.subscriptions.map(s => service.publicSubscription(s)), ...mine.alerts.map(a => service.publicChatAlert(a))]
       if (args.action === 'list') return { chat: conv.chatName ?? conv.chatId, items: items.map(short) }
       if (ctxc.refused) throw new UserError('nl2sql/access-denied', ctxc.refused)
-      if (!CREATOR_ROLES.includes(ctxc.actor.role)) throw new UserError('nl2sql/viewer', '只读成员只能查看订阅，不能暂停或取消。')
+      if (!CREATOR_ROLES.includes(ctxc.actor.role)) throw new UserError('nl2sql/viewer', '只读成员只能查看订阅，不能修改、暂停或取消。')
       if (!args.id || !items.some(x => x.id === args.id)) throw new UserError('nl2sql/invalid', `本聊天没有 id 为「${args.id ?? ''}」的订阅或告警，请先用 action=list 查看`)
+      if (args.action === 'update') {
+        const { action: _a, id, ...fields } = args
+        const kind = items.find(x => x.id === id).kind
+        const allowed = kind === 'subscription' ? ['title', 'time', 'period', 'weekdays', 'monthDay', 'grain', 'range'] : ['title', 'condition', 'every', 'at', 'cooldownMin', 'mentionMe']
+        const extra = Object.keys(fields).filter(k => !allowed.includes(k))
+        if (extra.length) throw new UserError('nl2sql/invalid', `${kind === 'subscription' ? '订阅' : '告警'}不能修改 ${extra.join('、')}；可修改：${allowed.join('、')}`)
+        if (!Object.keys(fields).length) throw new UserError('nl2sql/invalid', '请提供要修改的字段')
+        const u = await service.updateChatSubscription({ id, ...fields }, ctxc.actor)
+        return { done: 'update', updated: short(u) }
+      }
       const r = await service.setChatSubscription({ id: args.id, action: args.action === 'cancel' ? 'delete' : args.action }, ctxc.actor)
       return { done: args.action, id: args.id, ...(r.deleted ? {} : { status: r.status }) }
     }),
@@ -560,6 +651,7 @@ export const FEATURE = {
   rpc: (service) => ({
     listChatSubscriptions: () => service.listChatSubscriptions(),
     setChatSubscription: (p) => service.setChatSubscription(p ?? {}),
+    updateChatSubscription: (p) => service.updateChatSubscription(p ?? {}),
     runChatSubscription: (p) => service.runSubscription(p?.id),
   }),
   tools: registerTools,

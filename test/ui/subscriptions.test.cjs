@@ -26,12 +26,13 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
 
   const ds = { id: 'd1', name: '本地', database: 'testdb', host: 'h', port: 3306, user: 'u', current: true, schemaAnalyzedAt: 1, hasPassword: true }
   let groups = [{ key: 'ch1:g1', channelId: 'ch1', chatId: 'g1', chatName: '运营群', platform: 'lark', channelName: '飞书机器人', items: [
-    { kind: 'subscription', id: 'sub-1', title: '日报', schedule: '每天 09:00', nextAt: Date.now() + 3600000, status: 'active', datasourceName: '本地', createdBy: { name: '甲' }, lastDeliveredAt: Date.now() },
-    { kind: 'alert', id: 'al-1', title: '笔数告警', schedule: '每小时检查', conditionText: '> 100', status: 'suspended', lastError: '成员「甲」已被移除或停用', datasourceName: '本地', createdBy: { name: '甲' } },
+    { kind: 'subscription', id: 'sub-1', title: '日报', source: 'metric', metric: '交易笔数', range: 'yesterday', period: 'daily', time: '09:00', schedule: '每天 09:00', nextAt: Date.now() + 3600000, status: 'active', datasourceName: '本地', createdBy: { name: '甲' }, lastDeliveredAt: Date.now() },
+    { kind: 'alert', id: 'al-1', title: '笔数告警', condition: { type: 'threshold', op: '>', value: 100 }, every: 'hour', cooldownMin: 60, mentionMe: true, schedule: '每小时检查', conditionText: '> 100', status: 'suspended', lastError: '成员「甲」已被移除或停用', datasourceName: '本地', createdBy: { name: '甲' } },
   ] }]
   const calls = []
   const responses = {
     listDatasources: [ds], listChatSubscriptions: () => groups,
+    updateChatSubscription: (p) => { groups = groups.map(g => ({ ...g, items: g.items.map(i => i.id === p.id ? { ...i, title: p.title, schedule: p.period === 'weekly' ? '每周一、三 10:30' : i.schedule } : i) })); return {} },
     setChatSubscription: (p) => { if (p.action === 'delete') groups = groups.map(g => ({ ...g, items: g.items.filter(i => i.id !== p.id) })); return {} },
     onboardingStatus: { hasDatasource: true, analyzed: true, hasKnowledge: true, askedQuestion: true, hasChannel: true, dismissed: true },
     getSettings: { maxRows: 500, defaults: {} }, listDashboards: { current: 'db', dashboards: [{ id: 'db', name: '默认', widgets: 0 }] }, listDashboard: [],
@@ -75,6 +76,36 @@ const MODS = candidates.find((d) => ['jsdom', 'react', 'react-dom'].every((m) =>
     assert.match(text(), /飞书机器人/)
     assert.match(text(), /日报/); assert.match(text(), /每天 09:00/); assert.match(text(), /甲/)
     assert.match(text(), /已停用/); assert.match(text(), /已被移除或停用/)
+  })
+
+  const setVal = async (el, v) => { await act(async () => { const proto = el.tagName === 'SELECT' ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new window.Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })) }); await settle() }
+  const rowBtn = (title, label) => [...document.querySelectorAll('.n2s-sub tbody tr')].find(r => r.textContent.includes(title))?.querySelectorAll('button') && [...[...document.querySelectorAll('.n2s-sub tbody tr')].find(r => r.textContent.includes(title)).querySelectorAll('button')].find(b => b.textContent.trim() === label)
+
+  await test('edit a subscription: weekly schedule, title and range → updateChatSubscription', async () => {
+    await clickEl(rowBtn('日报', '修改'))
+    assert.match(text(), /查询内容和推送的群不能改/)
+    const ed = document.querySelector('.n2s-sub-edit')
+    await setVal(ed.querySelector('input:not([type])'), '日报（周）')
+    await clickEl([...ed.querySelectorAll('.n2s-seg button')].find(b => b.textContent === '每周'))
+    await clickEl([...ed.querySelectorAll('.n2s-chip')].find(b => b.textContent === '周三'))
+    await setVal(ed.querySelector('input[type=time]'), '10:30')
+    await setVal([...ed.querySelectorAll('select')].find(x => [...x.options].some(o => o.value === 'last7d')), 'last7d')
+    await clickEl([...ed.querySelectorAll('button')].find(b => b.textContent.trim() === '保存'))
+    const p = calls.filter(c => c.method === 'updateChatSubscription').at(-1).payload
+    assert.deepEqual(p, { id: 'sub-1', title: '日报（周）', period: 'weekly', time: '10:30', weekdays: [1, 3], grain: null, range: 'last7d' })
+    assert.equal(document.querySelector('.n2s-sub-edit'), null, 'editor closed')
+    assert.match(text(), /已保存修改/); assert.match(text(), /每周一、三 10:30/)
+  })
+
+  await test('edit an alert: threshold and repeat interval', async () => {
+    await clickEl(rowBtn('笔数告警', '修改'))
+    const ed = document.querySelector('.n2s-sub-edit')
+    assert.match(ed.textContent, /触发时 @甲/)
+    await setVal(ed.querySelector('input[aria-label="阈值"]'), '2000')
+    await setVal(ed.querySelector('input[type=number][max="10080"]'), '30')
+    await clickEl([...ed.querySelectorAll('button')].find(b => b.textContent.trim() === '保存'))
+    const p = calls.filter(c => c.method === 'updateChatSubscription').at(-1).payload
+    assert.deepEqual(p, { id: 'al-1', title: '笔数告警', condition: { type: 'threshold', op: '>', value: 2000 }, every: 'hour', at: '09:00', cooldownMin: 30, mentionMe: true })
   })
 
   await test('pause / resume / delete call setChatSubscription', async () => {

@@ -181,6 +181,50 @@ try {
     assert.ok(g.items.some(i => i.kind === 'alert' && i.status === 'active'))
   })
 
+  await test('update a subscription from the page and from chat: schedule, title, metric range; source and chat fixed', async () => {
+    const before = service.state.chatSubscriptions.find(x => x.id === metricSubId)
+    const sql = before.sql; const chat = before.chatId
+    const u = await call('updateChatSubscription', { id: metricSubId, title: '周报', period: 'monthly', monthDay: 3, time: '10:15', range: 'lastMonth', grain: 'week' })
+    assert.equal(u.schedule, '每月 3 日 10:15')
+    assert.equal(u.title, '周报')
+    const s = service.state.chatSubscriptions.find(x => x.id === metricSubId)
+    assert.equal(s.range, 'lastMonth'); assert.equal(s.grain, 'week')
+    assert.equal(s.weekdays, undefined, 'weekly fields dropped')
+    assert.equal(s.sql, sql); assert.equal(s.chatId, chat); assert.equal(s.metric, '交易笔数')
+    assert.ok(service.records.list('admin', { limit: 5 }).some(r => r.action === 'sub.update' && /周报 · 每月 3 日 10:15/.test(r.detail)))
+    // A slot that has already passed is not delivered after the change.
+    const today = new Date(); const daily = await call('updateChatSubscription', { id: metricSubId, period: 'daily', time: '00:00' })
+    assert.equal(daily.schedule, '每天 00:00')
+    assert.equal(service.jobs_subscriptions(today).find(j => j.id === `sub:${metricSubId}`).due(today), false, 'no catch-up for today 00:00')
+    await assert.rejects(call('updateChatSubscription', { id: metricSubId, time: '25:00' }), /HH:MM/)
+    await assert.rejects(call('updateChatSubscription', { id: metricSubId, period: 'weekly', weekdays: [9] }), /weekdays/)
+    await assert.rejects(call('updateChatSubscription', { id: metricSubId, range: 'forever' }), /range/)
+    await assert.rejects(call('updateChatSubscription', { id: 'nope' }), /不存在/)
+    // From chat: only the given fields change; source fields are refused; viewers cannot update.
+    const out = await app.tool('nl2sql_subscriptions', { action: 'update', id: metricSubId, time: '08:00' }, exec(analystSid))
+    assert.equal(out.updated.schedule, '每天 08:00')
+    assert.equal(service.state.chatSubscriptions.find(x => x.id === metricSubId).title, '周报')
+    await assert.rejects(app.tool('nl2sql_subscriptions', { action: 'update', id: metricSubId, condition: { type: 'threshold', value: 1 } }, exec(analystSid)), /订阅不能修改 condition/)
+    await assert.rejects(app.tool('nl2sql_subscriptions', { action: 'update', id: metricSubId }, exec(analystSid)), /要修改的字段/)
+    await assert.rejects(app.tool('nl2sql_subscriptions', { action: 'update', id: metricSubId, time: '07:00' }, exec(viewerSid)), /只读成员/)
+  })
+
+  await test('update a chat alert: condition, frequency, cooldown, @asker; runtime state kept', async () => {
+    const a0 = service.state.alerts.find(x => x.chatTarget && x.name === '笔数告警')
+    const firedAt = a0.lastFiredAt
+    const u = await call('updateChatSubscription', { id: a0.id, title: '笔数大于一万', condition: { type: 'threshold', op: '>=', value: 10000 }, every: 'day', at: '08:30', cooldownMin: 120, mentionMe: false })
+    assert.equal(u.title, '笔数大于一万'); assert.equal(u.conditionText, '>= 10000'); assert.equal(u.schedule, '每天 08:30 检查')
+    const a = service.state.alerts.find(x => x.id === a0.id)
+    assert.equal(a.cooldownMin, 120); assert.equal(a.chatTarget.mentionUser, false); assert.equal(a.chatTarget.chatId, 'grp-1')
+    assert.equal(a.lastFiredAt, firedAt, 'runtime fields kept'); assert.equal(a.sql, a0.sql); assert.equal(a.channelId, null)
+    await assert.rejects(call('updateChatSubscription', { id: a0.id, condition: { type: 'threshold', value: 'x' } }), /数字/)
+    const out = await app.tool('nl2sql_subscriptions', { action: 'update', id: a0.id, condition: { type: 'change', direction: 'down', pct: 30 } }, exec(analystSid))
+    assert.match(out.updated.condition, /变化 down ≥ 30%/)
+    await assert.rejects(app.tool('nl2sql_subscriptions', { action: 'update', id: a0.id, time: '09:00' }, exec(analystSid)), /告警不能修改 time/)
+    // Put it back to "fires" for the later tests.
+    await call('updateChatSubscription', { id: a0.id, title: '笔数告警', condition: { type: 'threshold', op: '>', value: 0 }, every: 'hour', mentionMe: true })
+  })
+
   await test('pause / resume / cancel from chat and page', async () => {
     const p = await app.tool('nl2sql_subscriptions', { action: 'pause', id: metricSubId }, exec(analystSid))
     assert.equal(p.status, 'paused')

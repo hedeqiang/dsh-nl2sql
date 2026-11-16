@@ -425,6 +425,10 @@
 .n2s-sub-chat { font-weight: 600; }
 .n2s-sub-kind { font-size: 11px; }
 .n2s-sub-err { color: var(--n2s-err); white-space: normal; max-width: 260px; }
+.n2s-sub-editing td { background: var(--n2s-hover); }
+.n2s-sub .n2s-table-wrap { max-height: none; }
+.n2s-sub-editrow > td { background: var(--n2s-fill); padding: 14px 16px !important; white-space: normal; max-width: none !important; overflow: visible !important; }
+.n2s-sub-edit .n2s-form { max-width: 880px; }
 /* ---- reconciliation (rc) ---- */
 .n2s-rc-panes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
 @media (max-width:820px){.n2s-rc-panes{grid-template-columns:1fr}}
