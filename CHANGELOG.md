@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-16
+
+### Added
+- **Edit chat subscriptions and chat alerts.** *管理 → 群订阅* has a *修改* button on every row that opens an inline editor: a subscription's title and schedule (daily, weekly with weekdays, monthly with a day), and for metric subscriptions the time range and grain; an alert's name, condition, check frequency (and time for daily checks), repeat interval and whether to @ its creator. In a chat, "日报改到 10 点" or "阈值改成 2000" now works too: `nl2sql_subscriptions` has `action=update`, which changes only the fields given and is refused for read-only members.
+- What an item reads and which chat it goes to cannot be edited; the editor says to create a new one in the chat instead. Changes are written to the admin log with the old and new schedule or condition. A new schedule never delivers for a time that has already passed.
+
+### Fixed
+- The client build test now also parses `lib/client.js`, so a syntax error fails the suite even when the jsdom UI tests are skipped because jsdom / React are not installed.
+
 ## [0.17.0] - 2026-11-13
 
 ### Added
@@ -247,7 +256,8 @@ These features are tested with local databases and fake IM / Lark servers; real 
 
 - Redesigned UI; Lark push (Markdown and native charts); access control, feedback loop, dashboard global filters; PostgreSQL / Elasticsearch, SSH tunnels, privacy settings, automatic overviews, scheduled reports; semantic layer, ER graph, scan guard, history and audit, dashboards; first version.
 
-[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.3...v0.16.0
 [0.15.3]: https://github.com/hedeqiang/dsh-nl2sql/compare/v0.15.2...v0.15.3
